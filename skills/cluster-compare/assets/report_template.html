@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="bg-red-500 px-6 py-4">
+                <h1 class="text-2xl font-bold text-white">{{ title }}</h1>
+                <p class="text-red-100 mt-1 text-sm">{{ summary }}</p>
+            </div>
+
+            {% if meta_info %}
+            <div class="px-6 py-4 bg-gray-50 flex gap-8 border-b border-gray-100 text-sm flex-wrap">
+                {% for info in meta_info %}
+                <div><span class="text-gray-500">{{ info.label }}:</span> <span class="font-bold text-gray-800">{{ info.value }}</span></div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        {% for block in blocks %}
+
+            {# --- 渲染 KPI 网格 --- #}
+            {% if block.type == 'kpi_grid' %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {% for item in block["items"] %}
+                <div class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-{{ 'red' if item.trend == 'down' else 'blue' }}-500">
+                    <div class="text-sm text-gray-500 mb-1">{{ item.name }}</div>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold {{ 'text-red-600' if item.trend == 'down' else 'text-gray-800' }}">{{ item.value }}</span>
+                        {% if item.baseline %}
+                        <span class="text-sm text-gray-400 line-through">{{ item.baseline }}</span>
+                        {% endif %}
+                    </div>
+                    {% if item.desc %}
+                    <div class="text-xs {{ 'text-red-500' if item.trend == 'down' else 'text-blue-500' }} mt-2 font-medium">
+                        {{ item.desc }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            {# --- 渲染 图表容器 --- #}
+            {% elif block.type == 'chart' %}
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">{{ block.title }}</h3>
+                <div id="chart_{{ loop.index }}" style="width: 100%; height: 350px;"></div>
+            </div>
+
+            {# --- 渲染 文本分析 --- #}
+            {% elif block.type == 'analysis_text' %}
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">{{ block.title }}</h3>
+                <div class="bg-gray-50 rounded-lg p-5 border border-gray-200 text-sm text-gray-700">
+                    <ul class="list-disc pl-5 space-y-2">
+                        {% for text in block.content %}
+                        <li>{{ text }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endif %}
+
+        {% endfor %}
+    </div>
+
+    <script>
+        // 统一配置项
+        const commonOptions = {
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            legend: { bottom: 0 },
+            grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true }
+        };
+
+        const chartInstances = [];
+
+        {% for block in blocks %}
+            {% if block.type == 'chart' %}
+            (function() {
+                const chartDom = document.getElementById('chart_{{ loop.index }}');
+                if (!chartDom) return;
+                const myChart = echarts.init(chartDom);
+
+                // 将后端注入的 Python 字典转为 JS 对象
+                const xAxisData = {{ block["xAxis_data"] | tojson }};
+                const seriesData = {{ block["series"] | tojson }};
+
+                const option = {
+                    ...commonOptions,
+                    xAxis: {
+                        type: '{{ "value" if block.orientation == "horizontal" else "category" }}',
+                        data: {{ "null" if block.orientation == "horizontal" else "xAxisData" }}
+                    },
+                    yAxis: {
+                        type: '{{ "category" if block.orientation == "horizontal" else "value" }}',
+                        data: {{ "xAxisData" if block.orientation == "horizontal" else "null" }},
+                        axisLabel: { width: 100, overflow: 'truncate' }
+                    },
+                    series: seriesData.map(s => ({
+                        name: s.name,
+                        type: '{{ block.chart_type | default("bar") }}',
+                        data: s.data,
+                        label: { show: true, position: '{{ "right" if block.orientation == "horizontal" else "top" }}' }
+                    }))
+                };
+                myChart.setOption(option);
+                chartInstances.push(myChart);
+            })();
+            {% endif %}
+        {% endfor %}
+
+        // 响应式调整
+        window.addEventListener('resize', function() {
+            chartInstances.forEach(chart => chart.resize());
+        });
+    </script>
+</body>
+</html>
