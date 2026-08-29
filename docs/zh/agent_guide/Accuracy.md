@@ -10,24 +10,27 @@
 
 ## 核心能力
 
-- RL训推不一致根因分析
 - loss/gnorm NaN问题定位
 - 确定性计算问题定位
 - loss对不齐问题定位
+- RL训推算子差异扫描
+- RL训推不一致根因分析
 
 ## 推荐使用方式
 
-- 直接提供 dump 数据目录路径，并说明你想解决的问题
+- 除了扫描RL训推算子差异外，直接提供 dump 数据目录路径，并说明你想解决的问题
+- 进行RL训推算子差异扫描时，需要提供运行环境信息与RL训练脚本
 - 如果是集群或多卡问题，尽量同时说明异常现象、涉及 rank 或训练阶段
 
 ## 典型使用场景
 
 | 场景             | 示例提示词 | 效果展示 |
 |----------------|---|--|
-| RL训推不一致分析      | `请基于输入的训练和推理dump数据，分析训推的差异来源，给出可能原因。` | <img src="../figures/accuracy_rl_rca_report.jpg" alt="RL训推不一致根因分析报告" width="800"> |
 | loss/gnorm NaN溢出分析 | `请基于输入的训练dump数据，分析其中的NaN溢出，找出源卡和根因算子` | <img src="../figures/nan_overflow_detection_report.jpg" alt="loss/gnorm NaN溢出分析报告" width="800"> |
 | 开启确定性计算、切换软件版本，模型运行两次结果不一致分析 | `请基于输入的md5 dump数据，进行数据比对，寻找比对差异点，给出可能原因。` | <img src="../figures/deterministic_report.png" alt="确定性计算问题分析报告" width="800"> |
 | loss对不齐，基于比对结果分析 | `分析比对结果，输出分析报告` | <img src="../figures/compare_result_analyzer.png" alt="loss对不齐问题分析报告" width="800"> |
+| RL训推算子差异扫描 | `请基于提供的运行环境与训练脚本，进行训推算子差异扫描` | <img src="../figures/train_infer_op_diff_scanner_report.png" alt="RL训推算子差异扫描分析报告" width="800"> |
+| RL训推不一致分析      | `请基于输入的训练和推理dump数据，分析训推的差异来源，给出可能原因。` | <img src="../figures/accuracy_rl_rca_report.jpg" alt="RL训推不一致根因分析报告" width="800"> |
 
 ## 当出现分析结果不正确
 
