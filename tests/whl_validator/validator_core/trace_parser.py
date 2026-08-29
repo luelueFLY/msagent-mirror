@@ -13,9 +13,7 @@ def _validate_traces(traces: list[dict]) -> None:
 
     for index, event in enumerate(traces):
         if not isinstance(event, dict):
-            raise TypeError(
-                f"trace event at index {index} is {type(event).__name__}, expected dict"
-            )
+            raise TypeError(f"trace event at index {index} is {type(event).__name__}, expected dict")
 
 
 def _validate_tool_name(tool_name: str) -> None:
@@ -29,11 +27,7 @@ def get_tool_calls(traces: list[dict], tool_name: str) -> list[dict]:
     _validate_traces(traces)
     _validate_tool_name(tool_name)
 
-    return [
-        event
-        for event in traces
-        if event.get("type") == "tool_call" and event.get("tool") == tool_name
-    ]
+    return [event for event in traces if event.get("type") == "tool_call" and event.get("tool") == tool_name]
 
 
 def get_tool_results(traces: list[dict], tool_name: str) -> list[dict]:
@@ -41,11 +35,7 @@ def get_tool_results(traces: list[dict], tool_name: str) -> list[dict]:
     _validate_traces(traces)
     _validate_tool_name(tool_name)
 
-    return [
-        event
-        for event in traces
-        if event.get("type") == "tool_result" and event.get("tool") == tool_name
-    ]
+    return [event for event in traces if event.get("type") == "tool_result" and event.get("tool") == tool_name]
 
 
 def get_token_usage(traces: list[dict]) -> dict:
@@ -98,8 +88,7 @@ def get_mcp_tool_calls(
     return [
         event
         for event in traces
-        if event.get("type") == "tool_call"
-        and is_mcp_tool_name(event.get("tool"), server_name, tool_name)
+        if event.get("type") == "tool_call" and is_mcp_tool_name(event.get("tool"), server_name, tool_name)
     ]
 
 
@@ -113,8 +102,7 @@ def get_mcp_tool_results(
     return [
         event
         for event in traces
-        if event.get("type") == "tool_result"
-        and is_mcp_tool_name(event.get("tool"), server_name, tool_name)
+        if event.get("type") == "tool_result" and is_mcp_tool_name(event.get("tool"), server_name, tool_name)
     ]
 
 
@@ -140,11 +128,7 @@ def get_tool_result_text(event: dict) -> str:
         return content
 
     blocks = decoded if isinstance(decoded, list) else [decoded]
-    text_parts = [
-        block["text"]
-        for block in blocks
-        if isinstance(block, dict) and isinstance(block.get("text"), str)
-    ]
+    text_parts = [block["text"] for block in blocks if isinstance(block, dict) and isinstance(block.get("text"), str)]
     return "\n".join(text_parts) if text_parts else content
 
 
@@ -156,7 +140,5 @@ def get_tool_result_json(event: dict) -> dict:
     except json.JSONDecodeError as exc:
         raise ValueError(f"tool result is not valid JSON: {content!r}") from exc
     if not isinstance(payload, dict):
-        raise ValueError(
-            f"tool result JSON must be an object, got {type(payload).__name__}"
-        )
+        raise ValueError(f"tool result JSON must be an object, got {type(payload).__name__}")
     return payload

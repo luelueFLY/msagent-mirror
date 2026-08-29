@@ -118,19 +118,11 @@ def msagent_runtime_factory(
         nonlocal runtime_index
         protocol = validation_config.llm.protocol(provider)
         resolved_api_key = (
-            api_key.strip()
-            if isinstance(api_key, str)
-            else os.getenv(validation_config.llm.api_key_env, "").strip()
+            api_key.strip() if isinstance(api_key, str) else os.getenv(validation_config.llm.api_key_env, "").strip()
         )
         if not resolved_api_key:
-            pytest.skip(
-                f"{provider} 测试缺少环境变量: {validation_config.llm.api_key_env}"
-            )
-        resolved_base_url = (
-            base_url.strip()
-            if isinstance(base_url, str) and base_url.strip()
-            else protocol.base_url
-        )
+            pytest.skip(f"{provider} 测试缺少环境变量: {validation_config.llm.api_key_env}")
+        resolved_base_url = base_url.strip() if isinstance(base_url, str) and base_url.strip() else protocol.base_url
 
         runtime_root = tmp_path / f"runtime-{runtime_index:02d}-{provider}"
         runtime_artifacts = case_artifact_dir / f"runtime-{runtime_index:02d}"
@@ -154,9 +146,7 @@ def msagent_runtime_factory(
             if not isinstance(runtime_env, dict):
                 raise TypeError("runtime_env must be a dictionary or None")
             invalid_runtime_env = [
-                key
-                for key, value in runtime_env.items()
-                if not isinstance(key, str) or not isinstance(value, str)
+                key for key, value in runtime_env.items() if not isinstance(key, str) or not isinstance(value, str)
             ]
             if invalid_runtime_env:
                 raise TypeError("runtime_env keys and values must all be strings")
@@ -166,8 +156,7 @@ def msagent_runtime_factory(
         executable = validation_config.msagent.executable
         if shutil.which(executable, path=extra_env["PATH"]) is None:
             pytest.fail(
-                f"当前 Python 环境中找不到 {executable!r}；"
-                "请先安装待验证的 mindstudio-agent whl",
+                f"当前 Python 环境中找不到 {executable!r}；请先安装待验证的 mindstudio-agent whl",
                 pytrace=False,
             )
 
@@ -193,8 +182,7 @@ def msagent_runtime_factory(
             timeout=validation_config.msagent.timeout_seconds,
         )
         assert configured.returncode == 0, (
-            f"{provider} 配置失败。\n"
-            f"stdout:\n{configured.stdout}\nstderr:\n{configured.stderr}"
+            f"{provider} 配置失败。\nstdout:\n{configured.stdout}\nstderr:\n{configured.stderr}"
         )
 
         runtime = MsagentRuntime(
@@ -212,11 +200,7 @@ def msagent_runtime_factory(
     yield create
 
     report = getattr(request.node, "rep_call", None)
-    if (
-        report is not None
-        and report.failed
-        and validation_config.artifacts.retain_workspace_on_failure
-    ):
+    if report is not None and report.failed and validation_config.artifacts.retain_workspace_on_failure:
         snapshots = case_artifact_dir / "failed-workspaces"
         for index, runtime in enumerate(runtimes):
             if runtime.workspace_dir.exists():

@@ -23,15 +23,12 @@ def assert_session_succeeded(
 ) -> None:
     """Assert process, trace completion, and optional response invariants."""
     assert result.returncode == 0, (
-        f"msagent 进程退出码为 {result.returncode}\n"
-        f"stderr:\n{result.stderr}\napp.log:\n{result.app_log}"
+        f"msagent 进程退出码为 {result.returncode}\nstderr:\n{result.stderr}\napp.log:\n{result.app_log}"
     )
     errors = [event for event in result.traces if event.get("type") == "error"]
     assert not errors, json.dumps(errors, ensure_ascii=False, indent=2)
 
-    finished = [
-        event for event in result.traces if event.get("type") == "session_finished"
-    ]
+    finished = [event for event in result.traces if event.get("type") == "session_finished"]
     assert finished, f"缺少 session_finished 事件: {result.traces!r}"
     assert finished[-1].get("exit_code") == 0, finished[-1]
 
@@ -39,8 +36,7 @@ def assert_session_succeeded(
         messages = [
             event
             for event in result.traces
-            if event.get("type") == "assistant_message"
-            and str(event.get("content") or "").strip()
+            if event.get("type") == "assistant_message" and str(event.get("content") or "").strip()
         ]
         assert messages, "会话没有产生非空 assistant_message"
 
@@ -105,8 +101,7 @@ def assert_tool_invoked(
             matching_calls.append(event)
 
     assert matching_calls, (
-        f"没有发现符合输入条件的 {tool_name} 调用，实际调用为："
-        f"{json.dumps(calls, ensure_ascii=False, indent=2)}"
+        f"没有发现符合输入条件的 {tool_name} 调用，实际调用为：{json.dumps(calls, ensure_ascii=False, indent=2)}"
     )
     call = matching_calls[-1]
     item_id = call.get("item_id")
@@ -115,8 +110,7 @@ def assert_tool_invoked(
     results = get_tool_results(result.traces, tool_name)
     matching_results = [event for event in results if event.get("item_id") == item_id]
     assert matching_results, (
-        f"没有找到与 {tool_name} 调用 {item_id!r} 对应的结果："
-        f"{json.dumps(results, ensure_ascii=False, indent=2)}"
+        f"没有找到与 {tool_name} 调用 {item_id!r} 对应的结果：{json.dumps(results, ensure_ascii=False, indent=2)}"
     )
     return call, matching_results[-1]
 

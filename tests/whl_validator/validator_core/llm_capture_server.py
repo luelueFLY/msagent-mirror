@@ -28,9 +28,7 @@ class ToolCallScript:
     def __post_init__(self) -> None:
         if not isinstance(self.tool_name, str) or not self.tool_name.strip():
             raise ValueError("tool_name must be a non-empty string")
-        if self.server_name is not None and (
-            not isinstance(self.server_name, str) or not self.server_name.strip()
-        ):
+        if self.server_name is not None and (not isinstance(self.server_name, str) or not self.server_name.strip()):
             raise ValueError("server_name must be a non-empty string or None")
         if not isinstance(self.arguments, dict):
             raise TypeError("arguments must be a dictionary")
@@ -133,8 +131,7 @@ class _ResponseState:
 
         messages = request.get("messages")
         has_tool_result = isinstance(messages, list) and any(
-            isinstance(message, dict) and message.get("role") == "tool"
-            for message in messages
+            isinstance(message, dict) and message.get("role") == "tool" for message in messages
         )
         if not has_tool_result:
             error = "the follow-up LLM request did not contain a tool result message"
@@ -157,10 +154,7 @@ def _completion_chunks(
     """Convert a complete mock message into OpenAI-compatible SSE chunks."""
     delta: dict[str, Any] = {"role": "assistant"}
     if message.get("tool_calls"):
-        delta["tool_calls"] = [
-            {"index": index, **tool_call}
-            for index, tool_call in enumerate(message["tool_calls"])
-        ]
+        delta["tool_calls"] = [{"index": index, **tool_call} for index, tool_call in enumerate(message["tool_calls"])]
     else:
         delta["content"] = str(message.get("content") or "")
 
@@ -173,15 +167,11 @@ def _completion_chunks(
     return [
         {
             **base,
-            "choices": [
-                {"index": 0, "delta": delta, "finish_reason": None}
-            ],
+            "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
         },
         {
             **base,
-            "choices": [
-                {"index": 0, "delta": {}, "finish_reason": finish_reason}
-            ],
+            "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
         },
         {
             **base,
@@ -226,10 +216,7 @@ def _handler(state: _ResponseState):
                     model=model,
                     created=created,
                 )
-                body = (
-                    "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks)
-                    + "data: [DONE]\n\n"
-                )
+                body = "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks) + "data: [DONE]\n\n"
                 content_type = "text/event-stream"
             else:
                 body = json.dumps(
