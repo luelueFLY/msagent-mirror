@@ -42,9 +42,7 @@ KEYWORD_SKILL_CASES = [
     pytest.param(
         SkillRoutingCase(
             prompt=(
-                "计算Ascend 910B3上Matmul算子的MFU，"
-                "input_shapes=[24480,1152;3456,1152;3456]，"
-                "task_duration=858300纳秒"
+                "计算Ascend 910B3上Matmul算子的MFU，input_shapes=[24480,1152;3456,1152;3456]，task_duration=858300纳秒"
             ),
             skill_name="op-mfu-calculator",
             skill_category="profiler",
@@ -79,9 +77,7 @@ def _assert_skill_invoked(
     assert call.get("item_id"), f"get_skill 调用缺少 item_id: {call!r}"
 
     results = get_tool_results(result.traces, "get_skill")
-    matching_results = [
-        event for event in results if event.get("item_id") == call["item_id"]
-    ]
+    matching_results = [event for event in results if event.get("item_id") == call["item_id"]]
     assert matching_results, f"没有找到对应的 get_skill 结果: {results!r}"
 
     output = matching_results[-1].get("output")
@@ -90,17 +86,11 @@ def _assert_skill_invoked(
 
     content = str(output.get("content") or "")
     assert content.strip(), "get_skill 返回了空的 SKILL.md 内容"
-    assert case.skill_name in content, (
-        f"get_skill 返回内容不属于目标 Skill: {content!r}"
-    )
+    assert case.skill_name in content, f"get_skill 返回内容不属于目标 Skill: {content!r}"
     missing_keywords = [
-        keyword
-        for keyword in case.skill_content_keywords
-        if keyword.casefold() not in content.casefold()
+        keyword for keyword in case.skill_content_keywords if keyword.casefold() not in content.casefold()
     ]
-    assert not missing_keywords, (
-        f"SKILL.md 缺少预期关键字 {missing_keywords!r}: {content!r}"
-    )
+    assert not missing_keywords, f"SKILL.md 缺少预期关键字 {missing_keywords!r}: {content!r}"
 
 
 def _run_case(llm_runtime_factory, case: SkillRoutingCase) -> RunResult:

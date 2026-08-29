@@ -53,9 +53,7 @@ def _tool_output(event: dict, tool_name: str) -> tuple[dict, str]:
     return output, content
 
 
-def _assert_run_is_healthy(
-    result: RunResult, mock_server: LlmCaptureServer
-) -> None:
+def _assert_run_is_healthy(result: RunResult, mock_server: LlmCaptureServer) -> None:
     """工具完成后，msagent 进程、会话和 DEBUG 日志均应正常。"""
     assert not mock_server.errors, "\n".join(mock_server.errors)
     assert_session_succeeded(result)
@@ -78,30 +76,20 @@ def test_filesystem_read_trace_is_successful(
             final_content=FILESYSTEM_MARKER,
         )
     )
-    runtime = _create_mock_runtime(
-        msagent_runtime_factory, mock_server, test_workspace
-    )
+    runtime = _create_mock_runtime(msagent_runtime_factory, mock_server, test_workspace)
     result = runtime.run("读取文件并回复内容。", agent_name="Accuracy")
 
     _, tool_result = assert_tool_invoked(
         result,
         "read_file",
-        input_matches=lambda tool_input: _same_path(
-            tool_input.get("file_path"), marker_path
-        ),
+        input_matches=lambda tool_input: _same_path(tool_input.get("file_path"), marker_path),
     )
-    assert not get_tool_calls(result.traces, "execute"), (
-        "文件读取用例不应绕过 read_file 使用 execute"
-    )
+    assert not get_tool_calls(result.traces, "execute"), "文件读取用例不应绕过 read_file 使用 execute"
 
     output, content = _tool_output(tool_result, "read_file")
     assert output.get("is_error") is False, f"read_file 执行失败: {output!r}"
-    assert FILESYSTEM_MARKER in content, (
-        f"read_file 未返回验证标记: {content!r}"
-    )
-    assert FILESYSTEM_MARKER in result.stdout, (
-        f"最终回复未包含文件内容: {result.stdout!r}"
-    )
+    assert FILESYSTEM_MARKER in content, f"read_file 未返回验证标记: {content!r}"
+    assert FILESYSTEM_MARKER in result.stdout, f"最终回复未包含文件内容: {result.stdout!r}"
     _assert_run_is_healthy(result, mock_server)
 
 
@@ -112,9 +100,7 @@ def test_read_file_reports_missing_file(
 ) -> None:
     """read_file 读取不存在的文件时，应返回明确错误且会话正常收口。"""
     missing_path = (test_workspace / "missing-validation-file.txt").resolve()
-    assert not missing_path.exists(), (
-        f"缺失文件测试路径意外存在: {missing_path}"
-    )
+    assert not missing_path.exists(), f"缺失文件测试路径意外存在: {missing_path}"
 
     mock_server = scripted_llm_server_factory(
         ToolCallScript(
@@ -123,36 +109,24 @@ def test_read_file_reports_missing_file(
             final_content="MOCK_READ_MISSING_COMPLETED",
         )
     )
-    runtime = _create_mock_runtime(
-        msagent_runtime_factory, mock_server, test_workspace
-    )
+    runtime = _create_mock_runtime(msagent_runtime_factory, mock_server, test_workspace)
     result = runtime.run("读取文件并回复结果。", agent_name="Accuracy")
 
     _, tool_result = assert_tool_invoked(
         result,
         "read_file",
-        input_matches=lambda tool_input: _same_path(
-            tool_input.get("file_path"), missing_path
-        ),
+        input_matches=lambda tool_input: _same_path(tool_input.get("file_path"), missing_path),
     )
-    assert not get_tool_calls(result.traces, "execute"), (
-        "缺失文件用例不应调用 execute"
-    )
+    assert not get_tool_calls(result.traces, "execute"), "缺失文件用例不应调用 execute"
 
     output, content = _tool_output(tool_result, "read_file")
     normalized = content.casefold()
     has_explicit_error = output.get("is_error") is True or any(
         keyword in normalized for keyword in MISSING_FILE_ERROR_KEYWORDS
     )
-    assert has_explicit_error, (
-        f"read_file 未明确报告文件不存在: {output!r}"
-    )
-    assert missing_path.name in content, (
-        f"错误结果没有指明目标文件 {missing_path.name!r}: {content!r}"
-    )
-    assert FILESYSTEM_MARKER not in content, (
-        f"缺失文件结果错误包含成功标记: {content!r}"
-    )
+    assert has_explicit_error, f"read_file 未明确报告文件不存在: {output!r}"
+    assert missing_path.name in content, f"错误结果没有指明目标文件 {missing_path.name!r}: {content!r}"
+    assert FILESYSTEM_MARKER not in content, f"缺失文件结果错误包含成功标记: {content!r}"
     assert not missing_path.exists(), "read_file 不应创建缺失的目标文件"
     _assert_run_is_healthy(result, mock_server)
 
@@ -170,26 +144,19 @@ def test_localshell_execution_relative_path(
             final_content=LOCALSHELL_MARKER,
         )
     )
-    runtime = _create_mock_runtime(
-        msagent_runtime_factory, mock_server, test_workspace
-    )
+    runtime = _create_mock_runtime(msagent_runtime_factory, mock_server, test_workspace)
     result = runtime.run("执行脚本并回复输出。", agent_name="Accuracy")
 
     _, tool_result = assert_tool_invoked(
         result,
         "execute",
-        input_matches=lambda tool_input: "print_marker.sh"
-        in str(tool_input.get("command") or ""),
+        input_matches=lambda tool_input: "print_marker.sh" in str(tool_input.get("command") or ""),
     )
     output, content = _tool_output(tool_result, "execute")
     assert output.get("is_error") is False, f"execute 执行失败: {output!r}"
     assert LOCALSHELL_MARKER in content, f"脚本输出缺少验证标记: {content!r}"
-    assert "command succeeded with exit code 0" in content.casefold(), (
-        f"execute 没有报告成功退出码 0: {content!r}"
-    )
-    assert LOCALSHELL_MARKER in result.stdout, (
-        f"最终回复未包含脚本输出: {result.stdout!r}"
-    )
+    assert "command succeeded with exit code 0" in content.casefold(), f"execute 没有报告成功退出码 0: {content!r}"
+    assert LOCALSHELL_MARKER in result.stdout, f"最终回复未包含脚本输出: {result.stdout!r}"
     _assert_run_is_healthy(result, mock_server)
 
 
@@ -209,9 +176,7 @@ def test_localshell_execution_absolute_path(
     )
     script_path.chmod(script_path.stat().st_mode | 0o111)
     assert script_path.is_file(), f"外部脚本未创建: {script_path}"
-    assert not script_path.is_relative_to(
-        test_workspace
-    ), f"外部脚本不应位于 workspace 内: {script_path}"
+    assert not script_path.is_relative_to(test_workspace), f"外部脚本不应位于 workspace 内: {script_path}"
 
     mock_server = scripted_llm_server_factory(
         ToolCallScript(
@@ -220,26 +185,19 @@ def test_localshell_execution_absolute_path(
             final_content=LOCALSHELL_MARKER,
         )
     )
-    runtime = _create_mock_runtime(
-        msagent_runtime_factory, mock_server, test_workspace
-    )
+    runtime = _create_mock_runtime(msagent_runtime_factory, mock_server, test_workspace)
     result = runtime.run("执行脚本并回复输出。", agent_name="Accuracy")
 
     _, tool_result = assert_tool_invoked(
         result,
         "execute",
-        input_matches=lambda tool_input: script_path.as_posix()
-        in str(tool_input.get("command") or ""),
+        input_matches=lambda tool_input: script_path.as_posix() in str(tool_input.get("command") or ""),
     )
     output, content = _tool_output(tool_result, "execute")
     assert output.get("is_error") is False, f"execute 执行失败: {output!r}"
     assert LOCALSHELL_MARKER in content, f"脚本输出缺少验证标记: {content!r}"
-    assert "command succeeded with exit code 0" in content.casefold(), (
-        f"execute 没有报告成功退出码 0: {content!r}"
-    )
-    assert LOCALSHELL_MARKER in result.stdout, (
-        f"最终回复未包含脚本输出: {result.stdout!r}"
-    )
+    assert "command succeeded with exit code 0" in content.casefold(), f"execute 没有报告成功退出码 0: {content!r}"
+    assert LOCALSHELL_MARKER in result.stdout, f"最终回复未包含脚本输出: {result.stdout!r}"
     _assert_run_is_healthy(result, mock_server)
 
 
@@ -256,9 +214,7 @@ def test_msprof_analyze_cli_help_is_available(
             final_content="MOCK_MSPROF_ANALYZE_COMPLETED",
         )
     )
-    runtime = _create_mock_runtime(
-        msagent_runtime_factory, mock_server, test_workspace
-    )
+    runtime = _create_mock_runtime(msagent_runtime_factory, mock_server, test_workspace)
     result = runtime.run("执行命令并回复输出。", agent_name="Accuracy")
 
     _, tool_result = assert_tool_invoked(
@@ -271,19 +227,11 @@ def test_msprof_analyze_cli_help_is_available(
     )
     output, content = _tool_output(tool_result, "execute")
     normalized = content.casefold()
-    assert output.get("is_error") is False, (
-        f"msprof-analyze --version 执行失败: {output!r}"
-    )
-    assert "version" in normalized, (
-        f"输出不是 msprof-analyze 版本信息: {content!r}"
-    )
-    assert "command succeeded with exit code 0" in normalized, (
-        f"msprof-analyze 没有报告成功退出码 0: {content!r}"
-    )
+    assert output.get("is_error") is False, f"msprof-analyze --version 执行失败: {output!r}"
+    assert "version" in normalized, f"输出不是 msprof-analyze 版本信息: {content!r}"
+    assert "command succeeded with exit code 0" in normalized, f"msprof-analyze 没有报告成功退出码 0: {content!r}"
     for error_text in ("command not found", "no such file"):
-        assert error_text not in normalized, (
-            f"msprof-analyze CLI 在目标环境中不可用: {content!r}"
-        )
+        assert error_text not in normalized, f"msprof-analyze CLI 在目标环境中不可用: {content!r}"
     _assert_run_is_healthy(result, mock_server)
 
 

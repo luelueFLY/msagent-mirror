@@ -103,9 +103,7 @@ def _run_and_capture(
     assert isinstance(payload, dict), f"捕获到的请求 body 无效: {captured!r}"
     assert "SYS_PROMPT_CAPTURE_OK" in result.stdout, result.stdout
 
-    session_started = [
-        event for event in result.traces if event.get("type") == "session_started"
-    ]
+    session_started = [event for event in result.traces if event.get("type") == "session_started"]
     assert session_started, f"缺少 session_started 事件: {result.traces!r}"
     assert session_started[-1].get("agent") == agent_name, session_started[-1]
     return runtime, result, payload
@@ -127,17 +125,11 @@ def test_agent_system_prompt_contains_expected_identity_skills_and_tools(
     tool_names = extract_tool_names(payload)
 
     for keyword in agent_case.expected_prompt_keywords:
-        assert keyword in system_prompt, (
-            f"{agent_case.agent_name} System Prompt 缺少关键字 {keyword!r}"
-        )
+        assert keyword in system_prompt, f"{agent_case.agent_name} System Prompt 缺少关键字 {keyword!r}"
     for keyword in agent_case.forbidden_prompt_keywords:
-        assert keyword not in system_prompt, (
-            f"{agent_case.agent_name} System Prompt 错误包含 {keyword!r}"
-        )
+        assert keyword not in system_prompt, f"{agent_case.agent_name} System Prompt 错误包含 {keyword!r}"
     for skill_name in agent_case.expected_skill_names:
-        assert skill_name in system_prompt, (
-            f"{agent_case.agent_name} System Prompt 缺少 Skill {skill_name!r}"
-        )
+        assert skill_name in system_prompt, f"{agent_case.agent_name} System Prompt 缺少 Skill {skill_name!r}"
 
     # get_skill 是所有带 Skill 的 Agent 都必须具备的目录工具。
     assert "get_skill" in tool_names, f"请求 tools 中缺少 get_skill: {tool_names!r}"
@@ -147,8 +139,7 @@ def test_agent_system_prompt_contains_expected_identity_skills_and_tools(
         )
     for prefix in agent_case.forbidden_tool_prefixes:
         assert not any(name.startswith(prefix) for name in tool_names), (
-            f"{agent_case.agent_name} 请求 tools 不应包含前缀 {prefix!r}: "
-            f"{tool_names!r}"
+            f"{agent_case.agent_name} 请求 tools 不应包含前缀 {prefix!r}: {tool_names!r}"
         )
 
 
@@ -179,6 +170,4 @@ def test_system_prompt_contains_runtime_environment(
         "{local_environment_context}",
     )
     for placeholder in unresolved_placeholders:
-        assert placeholder not in system_prompt, (
-            f"System Prompt 仍包含未替换的环境变量: {placeholder}"
-        )
+        assert placeholder not in system_prompt, f"System Prompt 仍包含未替换的环境变量: {placeholder}"
