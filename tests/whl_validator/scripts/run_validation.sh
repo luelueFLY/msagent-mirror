@@ -175,7 +175,7 @@ else
         "$env_python" -m pytest \
         -n auto \
         --rootdir="$PROJECT_ROOT" \
-        "$PROJECT_ROOT/tests"; then
+        "$PROJECT_ROOT/test_case"; then
         echo "[ERROR] Stage 4/4 failed: pytest." >&2
         exit 1
     fi

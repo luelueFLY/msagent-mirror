@@ -42,7 +42,32 @@ export LLM_API_KEY='<your-api-key>'
 ./scripts/run_validation.sh --help
 ```
 
-## 3. 测试用例
+## 3. 源码结构
+
+```text
+tests/whl_validator/
+├── README.md                      # 本文档
+├── pytest.ini                     # pytest 配置（testpaths=test_case）
+├── requirements-test.txt          # 测试依赖
+├── config/
+│   └── test_config.yaml           # LLM/产物/超时等配置
+├── scripts/
+│   └── run_validation.sh          # 四阶段编排脚本
+├── test_case/                     # pytest 用例与 conftest
+│   ├── conftest.py                # 共享 fixture（test_workspace 从种子复制）
+│   ├── test_01_llm_conn.py
+│   ├── test_02_mcp_tools.py
+│   ├── test_03_skills.py
+│   ├── test_04_sys_prompt.py
+│   └── test_05_local_env.py
+├── test_fixtures/                 # 测试种子数据（每个用例复制到隔离 workspace）
+│   └── workspace_seed/
+│       ├── read_marker.txt        # 内容：MSAGENT_FILESYSTEM_VALIDATION_OK
+│       └── print_marker.sh        # 输出：MSAGENT_LOCALSHELL_VALIDATION_OK
+└── validator_core/                # 测试支撑库（运行时、断言、trace 解析等）
+```
+
+## 4. 测试用例
 
 pytest 通过 `pytest-xdist` 的 `-n auto` 按 CPU 核数并行执行。测试间无共享状态，每个用例有独立的 workspace 和 MSAGENT_HOME。
 
@@ -52,13 +77,13 @@ pytest 通过 `pytest-xdist` 的 `-n auto` 按 CPU 核数并行执行。测试�
 | `test_02_mcp_tools.py` | 1. Profiler 初始化后发现 `analyze_overlap` 和 `find_slices` 工具<br>2. `analyze_overlap` 对合成 trace 返回精确耗时分类和占比<br>3. `find_slices` 按进程名、主线程、精确匹配过滤，排除干扰数据 | Mock LLM<br>真实启动 msprof-mcp 和 trace_processor_shell |
 | `test_03_skills.py` | 1. 显式快捷方式（`/op-mfu-calculator`）触发正确 Skill<br>2. 自然语言（不含 Skill 名）按语义触发同一 Skill | 需要真实 API Key |
 | `test_04_sys_prompt.py` | 1. Profiler 和 Accuracy 各自身份、Skill、工具边界不串用<br>2. 运行环境信息（工作目录、OS、Python）已注入且占位符已替换 | Mock LLM 捕获请求 payload<br>不访问真实模型 |
-| `test_05_local_env.py` | 1. `read_file` 正常读取和缺失文件错误处理<br>2. `execute` 相对路径和绝对路径执行脚本<br>3. `msprof-analyze` CLI 可用性 | Mock LLM<br>不需要 API Key |
+| `test_05_local_env.py` | 1. `read_file` 正常读取和缺失文件错误处理<br>2. `execute` 相对路径和绝对路径执行脚本<br>3. `msprof-analyze` CLI 可用性 | Mock LLM<br>不需要 API Key<br>依赖 `test_fixtures/workspace_seed/` |
 
-## 4. 产物结构
+## 5. 产物结构
 
 每次运行在 `run_dir` 下产生以下内容：
 
-```
+```text
 artifacts/install-<UTC时间>-<PID>/
 ├── conda-env/                    # Conda 环境（默认运行后删除）
 ├── conda-create.log              # Stage 1 日志
@@ -80,7 +105,7 @@ artifacts/install-<UTC时间>-<PID>/
 - conda 环境默认运行后自动删除（`--keep-env` 可保留）。
 - pytest 产物按 `config/test_config.yaml` 中的 `retention` 策略保留：默认仅保留失败用例产物。
 
-## 5. 配置
+## 6. 配置
 
 配置文件：`config/test_config.yaml`
 
