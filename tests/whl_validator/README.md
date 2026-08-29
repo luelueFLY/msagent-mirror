@@ -6,7 +6,7 @@
 
 ```bash
 cd tests/whl_validator
-```
+```text
 
 ## 1. 快速开始
 

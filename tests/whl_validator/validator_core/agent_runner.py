@@ -50,15 +50,11 @@ def _read_traces(trace_path: Path) -> tuple[list[dict], list[str]]:
         try:
             event: Any = json.loads(line)
         except json.JSONDecodeError as exc:
-            diagnostics.append(
-                f"invalid JSON in trace file {trace_path} at line {line_number}: {exc}"
-            )
+            diagnostics.append(f"invalid JSON in trace file {trace_path} at line {line_number}: {exc}")
             continue
 
         if not isinstance(event, dict):
-            diagnostics.append(
-                f"trace event at line {line_number} is {type(event).__name__}, expected object"
-            )
+            diagnostics.append(f"trace event at line {line_number} is {type(event).__name__}, expected object")
             continue
         traces.append(event)
 
@@ -136,9 +132,7 @@ def run_msagent(
         # subprocess requires string keys and values. Reject invalid data here
         # so configuration errors are reported before msagent is started.
         invalid_items = [
-            key
-            for key, value in extra_env.items()
-            if not isinstance(key, str) or not isinstance(value, str)
+            key for key, value in extra_env.items() if not isinstance(key, str) or not isinstance(value, str)
         ]
         if invalid_items:
             raise TypeError("extra_env keys and values must all be strings")
@@ -150,9 +144,7 @@ def run_msagent(
 
     configured_home = env.get("MSAGENT_HOME", "").strip()
     msagent_home = (
-        Path(configured_home).expanduser().resolve()
-        if configured_home
-        else (Path.home() / ".msagent").resolve()
+        Path(configured_home).expanduser().resolve() if configured_home else (Path.home() / ".msagent").resolve()
     )
     app_log_path = msagent_home / "logs" / "app.log"
     try:
@@ -172,13 +164,9 @@ def run_msagent(
         artifact_path.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
         if not artifact_path.is_dir() or any(artifact_path.iterdir()):
-            raise RuntimeError(
-                f"artifact directory already exists and is not empty: {artifact_path}"
-            )
+            raise RuntimeError(f"artifact directory already exists and is not empty: {artifact_path}")
     except OSError as exc:
-        raise RuntimeError(
-            f"failed to create artifact directory {artifact_path}: {exc}"
-        ) from exc
+        raise RuntimeError(f"failed to create artifact directory {artifact_path}: {exc}") from exc
 
     trace_path = artifact_path / "trace.jsonl"
     app_log_artifact_path = artifact_path / "app.log"
@@ -210,9 +198,7 @@ def run_msagent(
             check=False,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError(
-            "msagent executable was not found; install the whl and activate its environment"
-        ) from exc
+        raise RuntimeError("msagent executable was not found; install the whl and activate its environment") from exc
     except OSError as exc:
         raise RuntimeError(f"failed to start msagent: {exc}") from exc
     duration_seconds = time.monotonic() - started_at

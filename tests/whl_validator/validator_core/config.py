@@ -93,9 +93,7 @@ def load_validation_config(path: Path) -> ValidationConfig:
             provider=provider,
             base_url=_required_text(value, "base_url", location),
             base_url_env=_required_text(value, "base_url_env", location),
-            provider_api_key_env=_required_text(
-                value, "provider_api_key_env", location
-            ),
+            provider_api_key_env=_required_text(value, "provider_api_key_env", location),
         )
 
     msagent_payload = payload.get("msagent") or {}
@@ -109,11 +107,7 @@ def load_validation_config(path: Path) -> ValidationConfig:
     if retention not in {"all", "failed", "none"}:
         raise ValueError("artifacts.retention 只能是 all、failed 或 none")
     configured_root = Path(str(artifact_payload.get("root_dir") or "artifacts"))
-    root_dir = (
-        configured_root
-        if configured_root.is_absolute()
-        else path.parents[1] / configured_root
-    )
+    root_dir = configured_root if configured_root.is_absolute() else path.parents[1] / configured_root
 
     return ValidationConfig(
         llm=LlmConfig(
@@ -128,9 +122,7 @@ def load_validation_config(path: Path) -> ValidationConfig:
         artifacts=ArtifactConfig(
             root_dir=root_dir.resolve(),
             retention=retention,
-            retain_workspace_on_failure=bool(
-                artifact_payload.get("retain_workspace_on_failure", True)
-            ),
+            retain_workspace_on_failure=bool(artifact_payload.get("retain_workspace_on_failure", True)),
         ),
         raw=payload,
     )
