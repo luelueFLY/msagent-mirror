@@ -204,9 +204,7 @@ def _assert_mcp_run_is_healthy(
 ) -> None:
     """Apply common process, trace, log, and Mock LLM protocol assertions."""
     assert not mock_server.errors, "\n".join(mock_server.errors)
-    assert len(mock_server.requests) >= 2, (
-        "脚本化 LLM 应至少收到工具调用前和工具结果后的两次请求"
-    )
+    assert len(mock_server.requests) >= 2, "脚本化 LLM 应至少收到工具调用前和工具结果后的两次请求"
     assert MOCK_COMPLETION in result.stdout, result.stdout
     assert_session_succeeded(result)
     assert_app_log_has_no_fatal_exception(result)
@@ -219,8 +217,7 @@ def _assert_only_target_tool_was_called(
     """Prevent an MCP test from silently falling back to another tool."""
     calls = [event for event in result.traces if event.get("type") == "tool_call"]
     assert len(calls) == 1, (
-        f"用例只应调用 {MCP_SERVER_NAME}/{tool_name}，实际调用为："
-        f"{json.dumps(calls, ensure_ascii=False, indent=2)}"
+        f"用例只应调用 {MCP_SERVER_NAME}/{tool_name}，实际调用为：{json.dumps(calls, ensure_ascii=False, indent=2)}"
     )
     assert is_mcp_tool_name(calls[0].get("tool"), MCP_SERVER_NAME, tool_name), calls[0]
 
@@ -241,25 +238,17 @@ def test_msprof_mcp_server_exposes_required_trace_view_tools(
     # 和日志，让失败直接指向 Server 初始化问题。
     errors = [event for event in result.traces if event.get("type") == "error"]
     assert not errors, (
-        json.dumps(errors, ensure_ascii=False, indent=2)
-        + f"\nstderr:\n{result.stderr}\napp.log:\n{result.app_log}"
+        json.dumps(errors, ensure_ascii=False, indent=2) + f"\nstderr:\n{result.stderr}\napp.log:\n{result.app_log}"
     )
     payload = llm_capture_server.latest_request.get("body")
     assert isinstance(payload, dict), llm_capture_server.latest_request
     tool_names = extract_tool_names(payload)
-    assert len(tool_names) == len(set(tool_names)), (
-        f"LLM payload 中存在重复工具名: {tool_names!r}"
-    )
+    assert len(tool_names) == len(set(tool_names)), f"LLM payload 中存在重复工具名: {tool_names!r}"
 
     for required_tool in ("analyze_overlap", "find_slices"):
-        matching = [
-            name
-            for name in tool_names
-            if is_mcp_tool_name(name, MCP_SERVER_NAME, required_tool)
-        ]
+        matching = [name for name in tool_names if is_mcp_tool_name(name, MCP_SERVER_NAME, required_tool)]
         assert len(matching) == 1, (
-            f"{MCP_SERVER_NAME} 应唯一暴露 {required_tool!r}，实际匹配为 "
-            f"{matching!r}；全部工具为 {tool_names!r}"
+            f"{MCP_SERVER_NAME} 应唯一暴露 {required_tool!r}，实际匹配为 {matching!r}；全部工具为 {tool_names!r}"
         )
 
     assert_session_succeeded(result)
@@ -303,9 +292,7 @@ def test_msprof_mcp_analyze_overlap_returns_expected_breakdown(
     output = tool_result.get("output")
     assert isinstance(output, dict), tool_result
     assert output.get("is_error") is False, output
-    assert output.get("content_truncated") is False, (
-        "MCP 结果在 trace 中被截断，无法作为完整发布断言依据"
-    )
+    assert output.get("content_truncated") is False, "MCP 结果在 trace 中被截断，无法作为完整发布断言依据"
     payload = get_tool_result_json(tool_result)
     if "success" in payload:
         # analyze_overlap normally returns its analysis object directly. On a
@@ -318,21 +305,14 @@ def test_msprof_mcp_analyze_overlap_returns_expected_breakdown(
     breakdown = payload.get("breakdown")
     assert isinstance(breakdown, list), payload
     by_name = {
-        item.get("name"): item
-        for item in breakdown
-        if isinstance(item, dict) and isinstance(item.get("name"), str)
+        item.get("name"): item for item in breakdown if isinstance(item, dict) and isinstance(item.get("name"), str)
     }
     assert set(by_name) == set(EXPECTED_OVERLAP), by_name
     for name, expected in EXPECTED_OVERLAP.items():
-        assert float(by_name[name].get("duration_ms")) == pytest.approx(
-            expected["duration_ms"]
-        )
+        assert float(by_name[name].get("duration_ms")) == pytest.approx(expected["duration_ms"])
         assert by_name[name].get("percentage") == expected["percentage"]
 
-    percentage_sum = sum(
-        float(str(item["percentage"]).removesuffix("%"))
-        for item in breakdown
-    )
+    percentage_sum = sum(float(str(item["percentage"]).removesuffix("%")) for item in breakdown)
     assert percentage_sum == pytest.approx(100.0, abs=0.02)
     _assert_mcp_run_is_healthy(result, mock_server)
 
@@ -382,9 +362,7 @@ def test_msprof_mcp_find_slices_filters_target_process_and_main_thread(
     output = tool_result.get("output")
     assert isinstance(output, dict), tool_result
     assert output.get("is_error") is False, output
-    assert output.get("content_truncated") is False, (
-        "MCP 结果在 trace 中被截断，无法作为完整发布断言依据"
-    )
+    assert output.get("content_truncated") is False, "MCP 结果在 trace 中被截断，无法作为完整发布断言依据"
     envelope = get_tool_result_json(tool_result)
     assert envelope.get("success") is True, envelope
     assert envelope.get("error") is None, envelope
@@ -422,9 +400,7 @@ def test_msprof_mcp_find_slices_filters_target_process_and_main_thread(
         assert example.get("pid") == 100, example
         assert example.get("tid") == 100, example
         assert bool(example.get("is_main_thread")) is True, example
-        actual_durations_by_ts[float(example.get("tsMs"))] = float(
-            example.get("durMs")
-        )
+        actual_durations_by_ts[float(example.get("tsMs"))] = float(example.get("durMs"))
     assert actual_durations_by_ts == pytest.approx({10.0: 0.25, 20.0: 0.75})
 
     _assert_mcp_run_is_healthy(result, mock_server)
