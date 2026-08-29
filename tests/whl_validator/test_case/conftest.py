@@ -21,7 +21,7 @@ from validator_core.msagent_runtime import MsagentRuntime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PROJECT_ROOT / "config" / "test_config.yaml"
-WORKSPACE_SEED = PROJECT_ROOT / "testdata" / "workspace_seed"
+WORKSPACE_SEED = PROJECT_ROOT / "test_fixtures" / "workspace_seed"
 
 _CASE_ARTIFACTS: dict[str, Path] = {}
 _FAILED_CASES: set[str] = set()

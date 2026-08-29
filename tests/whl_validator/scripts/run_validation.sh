@@ -171,11 +171,11 @@ else
 
     echo "      Running pytest (-n auto)"
     if ! PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:$PYTHONPATH}" \
-        MSAgent_VALIDATION_RUN_DIR="${run_dir}/test-artifacts" \
+        MSAGENT_VALIDATION_RUN_DIR="${run_dir}/test-artifacts" \
         "$env_python" -m pytest \
         -n auto \
         --rootdir="$PROJECT_ROOT" \
-        "$PROJECT_ROOT/tests"; then
+        "$PROJECT_ROOT/test_case"; then
         echo "[ERROR] Stage 4/4 failed: pytest." >&2
         exit 1
     fi
