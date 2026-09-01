@@ -24,7 +24,7 @@ def _load_weights(model_path):
 
     pt_path = os.path.join(model_path, "pytorch_model.bin")
     if os.path.exists(pt_path):
-        return torch.load(pt_path, map_location="cpu")
+        return torch.load(pt_path, map_location="cpu", weights_only=True)
     return {}
 
 
