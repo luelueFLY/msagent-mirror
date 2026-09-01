@@ -64,6 +64,7 @@ description: 技能的详细描述，说明它做什么，以及什么时候使�
 | `compare-result-analyzer` | 基于比对结果，分析loss对不齐问题 | `分析比对结果` |
 | `train-infer-op-diff-scanner` | RL 训推算子差异性扫描（融合算子 vs 单算子） | `扫描这个 RL 脚本的训练和推理算子差异` |
 | `rl-consistency-analysis` | 做训练与推理一致性根因分析 | `分析这次训练和推理不一致的根因` |
+| `precision-debugger` | 分析定位乱码、复读等推理精度问题 | `我遇到了一个推理精度问题` |
 
 ### 2.3 量化 Skills
 
