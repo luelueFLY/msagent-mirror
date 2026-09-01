@@ -87,7 +87,7 @@ class SkillInstaller:
         await self._ensure_not_shadowed(pattern)
 
         target_root.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(shutil.copytree, source_root, target_root, ignore=COPY_IGNORE_PATTERNS)
+        await asyncio.to_thread(shutil.copytree, source_root, target_root, ignore=COPY_IGNORE_PATTERNS, symlinks=False)
 
         try:
             installed_skills = await self.skill_factory.load_skills(self.skills_dir)

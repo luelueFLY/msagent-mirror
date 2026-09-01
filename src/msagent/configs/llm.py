@@ -73,24 +73,6 @@ class LLMConfig(VersionedConfig):
         description="LLM request timeout in seconds",
         gt=0,
     )
-    trust_env: bool | None = Field(
-        default=None,
-        description=(
-            "Whether HTTP client should trust proxy/SSL env vars (HTTP_PROXY, "
-            "HTTPS_PROXY, SSL_CERT_FILE). Null means provider-specific default."
-        ),
-    )
-    verify: bool | str = Field(
-        default=False,
-        description=(
-            "SSL certificate verification. Set to True to enable verification, "
-            "or provide a path to a custom CA bundle PEM file."
-        ),
-    )
-    http2: bool = Field(
-        default=False,
-        description="Whether to enable HTTP/2 for model requests",
-    )
     params: dict[str, Any] | None = Field(
         default=None,
         description=("Extra keyword arguments forwarded to init_chat_model for provider-specific options"),
