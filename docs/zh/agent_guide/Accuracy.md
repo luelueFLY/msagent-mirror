@@ -15,11 +15,12 @@
 - loss对不齐问题定位
 - RL训推算子差异扫描
 - RL训推不一致根因分析
+- 梯度尖刺（Gradient Spike）根因定位
 
 ## 推荐使用方式
 
-- 除了扫描RL训推算子差异外，直接提供 dump 数据目录路径，并说明你想解决的问题
-- 进行RL训推算子差异扫描时，需要提供运行环境信息与RL训练脚本
+- 大部分分析场景，直接提供 dump 数据目录路径，并描述需要解决的问题即可；进行 RL 训推算子差异扫描时，另需提供运行环境信息与 RL 训练脚本
+- 进行梯度尖刺分析时，除 msprobe 的 dump 统计数据外，也支持提供梯度监控数据（由 [Monitor训练状态轻量化监测工具](https://gitcode.com/Ascend/msprobe/blob/master/docs/zh/user_guide/monitor_instruct.md) 产生的 monitor CSV，或由 [趋势可视化](https://gitcode.com/Ascend/msprobe/blob/master/docs/zh/user_guide/accuracy_compare/trend_visualization_instruct.md) 解析 CSV 获得的 trend.db 文件），并说明异常现象，便于定位分析
 - 如果是集群或多卡问题，尽量同时说明异常现象、涉及 rank 或训练阶段
 
 ## 典型使用场景
@@ -31,6 +32,7 @@
 | loss对不齐，基于比对结果分析 | `分析比对结果，输出分析报告` | <img src="../figures/compare_result_analyzer.png" alt="loss对不齐问题分析报告" width="800"> |
 | RL训推算子差异扫描 | `请基于提供的运行环境与训练脚本，进行训推算子差异扫描` | <img src="../figures/train_infer_op_diff_scanner_report.png" alt="RL训推算子差异扫描分析报告" width="800"> |
 | RL训推不一致分析      | `请基于输入的训练和推理dump数据，分析训推的差异来源，给出可能原因。` | <img src="../figures/accuracy_rl_rca_report.jpg" alt="RL训推不一致根因分析报告" width="800"> |
+| 梯度尖刺（Gradient Spike）根因分析 | `请基于提供的梯度监控数据，分析其中的梯度尖刺，定位根因坐标和前反向分叉点。` | <img src="../figures/spike_root_case_report.png" alt="梯度尖刺分析报告" width="800"> |
 
 ## 当出现分析结果不正确
 
