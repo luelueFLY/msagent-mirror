@@ -24,16 +24,12 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
 from langchain.chat_models import init_chat_model
 from pydantic import SecretStr
 
 from msagent.configs.llm import LLMConfig
-from msagent.core.logging import get_logger
 from msagent.core.settings import LLMSettings
 from msagent.utils.langchain_openai_compat import patch_chat_openai_reasoning_content_support
-
-logger = get_logger(__name__)
 
 _SUPPORTED_PROVIDER_MAP: dict[str, str] = {
     "openai": "openai",
@@ -124,40 +120,6 @@ class LLMFactory:
             # Keep token usage metrics populated while streaming.
             kwargs["stream_usage"] = bool(cfg.streaming)
 
-            resolved_trust_env = self._resolve_openai_trust_env(cfg.trust_env, normalized_base_url)
-            resolved_verify = cfg.verify
-            logger.debug(
-                "OpenAI-compatible client config: base_url=%s trust_env_config=%s resolved_trust_env=%s "
-                "verify=%s "
-                "http_proxy_present=%s https_proxy_present=%s all_proxy_present=%s no_proxy_present=%s",
-                normalized_base_url,
-                cfg.trust_env,
-                resolved_trust_env,
-                resolved_verify,
-                bool(os.getenv("HTTP_PROXY")),
-                bool(os.getenv("HTTPS_PROXY")),
-                bool(os.getenv("ALL_PROXY")),
-                bool(os.getenv("NO_PROXY")),
-            )
-            if cfg.http2 or not resolved_trust_env or resolved_verify is not True:
-                # Custom OpenAI-compatible gateways are often private endpoints.
-                # Create explicit clients when HTTP/2 is requested, the caller
-                # explicitly disables environment-derived proxy/SSL settings, or
-                # a custom verify value (False or CA bundle path) is configured.
-                timeout = kwargs["timeout"]
-                kwargs["http_client"] = httpx.Client(
-                    timeout=timeout,
-                    trust_env=resolved_trust_env,
-                    http2=bool(cfg.http2),
-                    verify=resolved_verify,
-                )
-                kwargs["http_async_client"] = httpx.AsyncClient(
-                    timeout=timeout,
-                    trust_env=resolved_trust_env,
-                    http2=bool(cfg.http2),
-                    verify=resolved_verify,
-                )
-
         return init_chat_model(model_name, **kwargs)
 
     @staticmethod
@@ -224,13 +186,3 @@ class LLMFactory:
             return True
 
         return host == "api.openai.com" or host.endswith(".openai.com")
-
-    @classmethod
-    def _resolve_openai_trust_env(
-        cls,
-        trust_env: bool | None,
-        base_url: str | None,
-    ) -> bool:
-        if trust_env is not None:
-            return bool(trust_env)
-        return True

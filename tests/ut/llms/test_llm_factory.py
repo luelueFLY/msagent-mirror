@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 
 from msagent.configs import LLMConfig
@@ -200,7 +199,7 @@ def test_llm_factory_applies_retry_override_kwargs(monkeypatch) -> None:
     assert captured["kwargs"]["timeout"] == 45
 
 
-def test_llm_factory_uses_environment_trust_for_custom_openai_endpoint_by_default(
+def test_llm_factory_delegates_transport_to_langchain_for_custom_openai_endpoint(
     monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
@@ -226,17 +225,12 @@ def test_llm_factory_uses_environment_trust_for_custom_openai_endpoint_by_defaul
     LLMFactory().create(config)
 
     kwargs = captured["kwargs"]
-    http_client = kwargs["http_client"]
-    http_async_client = kwargs["http_async_client"]
-    assert http_client._trust_env is True
-    assert http_async_client._trust_env is True
-    http_client.close()
-    asyncio.run(http_async_client.aclose())
+    assert kwargs["base_url"] == "https://gmn.chuangzuoli.com/v1"
+    assert "http_client" not in kwargs
+    assert "http_async_client" not in kwargs
 
 
-def test_llm_factory_respects_explicit_trust_env_for_custom_endpoint(
-    monkeypatch,
-) -> None:
+def test_llm_factory_ignores_legacy_transport_options(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     def fake_init_chat_model(model_name: str, **kwargs):
@@ -245,63 +239,25 @@ def test_llm_factory_respects_explicit_trust_env_for_custom_endpoint(
         return SimpleNamespace(model_name=model_name, kwargs=kwargs)
 
     monkeypatch.setattr("msagent.llms.factory.init_chat_model", fake_init_chat_model)
-
-    config = LLMConfig(
-        provider="openai",
-        model="gpt-5.4",
-        alias="default",
-        base_url="https://gmn.chuangzuoli.com/v1",
-        trust_env=True,
-        max_tokens=0,
-        temperature=0.1,
-        streaming=True,
-        request_timeout_seconds=120,
+    config = LLMConfig.model_validate(
+        {
+            "provider": "openai",
+            "model": "gpt-5.4",
+            "max_tokens": 0,
+            "temperature": 0.1,
+            "trust_env": False,
+            "verify": False,
+            "http2": True,
+        }
     )
 
     LLMFactory().create(config)
 
-    kwargs = captured["kwargs"]
-    http_client = kwargs["http_client"]
-    http_async_client = kwargs["http_async_client"]
-    assert http_client._trust_env is True
-    assert http_async_client._trust_env is True
-    http_client.close()
-    asyncio.run(http_async_client.aclose())
-
-
-def test_llm_factory_respects_explicit_trust_env_false_for_custom_endpoint(
-    monkeypatch,
-) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_init_chat_model(model_name: str, **kwargs):
-        captured["model_name"] = model_name
-        captured["kwargs"] = kwargs
-        return SimpleNamespace(model_name=model_name, kwargs=kwargs)
-
-    monkeypatch.setattr("msagent.llms.factory.init_chat_model", fake_init_chat_model)
-
-    config = LLMConfig(
-        provider="openai",
-        model="gpt-5.4",
-        alias="default",
-        base_url="https://gmn.chuangzuoli.com/v1",
-        trust_env=False,
-        max_tokens=0,
-        temperature=0.1,
-        streaming=True,
-        request_timeout_seconds=120,
-    )
-
-    LLMFactory().create(config)
-
-    kwargs = captured["kwargs"]
-    http_client = kwargs["http_client"]
-    http_async_client = kwargs["http_async_client"]
-    assert http_client._trust_env is False
-    assert http_async_client._trust_env is False
-    http_client.close()
-    asyncio.run(http_async_client.aclose())
+    assert "trust_env" not in config.model_dump()
+    assert "verify" not in config.model_dump()
+    assert "http2" not in config.model_dump()
+    assert "http_client" not in captured["kwargs"]
+    assert "http_async_client" not in captured["kwargs"]
 
 
 def test_llm_factory_forwards_extra_params(monkeypatch) -> None:
