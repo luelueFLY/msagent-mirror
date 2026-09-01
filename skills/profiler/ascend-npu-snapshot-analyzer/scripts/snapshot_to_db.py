@@ -22,13 +22,44 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 
+_PICKLE_SAFE_TYPES: frozenset[type] = frozenset({
+    dict, list, tuple, set,
+    str, bytes,
+    int, float, bool,
+    type(None),
+})
+
+class _SafeUnpickler(pickle.Unpickler):
+    """Unpickler that restricts deserialization to built-in safe types only.
+
+    NPU memory snapshots contain only dict/list/str/int/float/bool/None
+    and never custom objects, so this is a safe and compatible restriction.
+    """
+
+    def find_class(self, module: str, name: str) -> type:
+        if module == "collections" and name in ("OrderedDict", "defaultdict", "Counter"):
+            return getattr(__import__("collections", fromlist=[name]), name)
+        if module == "typing":
+            # typing types may appear in empty containers.
+            raise pickle.UnpicklingError(
+                f"Unpickling typing objects is not allowed: {module}.{name}"
+            )
+        if module == "builtins":
+            obj = getattr(__import__("builtins"), name, None)
+            if obj is not None and obj in _PICKLE_SAFE_TYPES:
+                return obj
+        raise pickle.UnpicklingError(
+            f"Unpickling unsafe object type is not allowed: {module}.{name}"
+        )
+
+
 def _pickle_load(filepath: str) -> Dict[str, Any]:
     """加载 pickle 文件，兼容 list 和 dict 两种格式"""
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"文件不存在: {filepath}")
 
     with open(filepath, "rb") as f:
-        data = pickle.load(f)  # nosec B403
+        data = _SafeUnpickler(f).load()
 
     if isinstance(data, dict):
         return {
