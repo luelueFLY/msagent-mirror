@@ -11,6 +11,12 @@ This directory stores project-local runtime configuration for `msagent`.
 
 These files are copied into `./.msagent/` on first run.
 
+## Security and trust boundary
+
+- `msagent` may execute shell commands, load third-party MCP servers and Skills, and read files from the current workspace. Use it only in trusted environments.
+- Prefer passing credentials via environment variables instead of committing secrets into project files or local config.
+- `msagent` enables TLS certificate verification by default for its own HTTP requests. Third-party MCP servers, Skills, and external commands may implement their own network behavior separately.
+
 ## Tavily API key setup
 
 This README is the single source of truth for Tavily MCP configuration in the default local config template.

@@ -62,6 +62,11 @@ MindStudio-Agent（简称 `msagent`）是面向昇腾 Ascend NPU 开发、调试
 
 工具的详细使用方法，请参见《[msAgent使用指南](docs/zh/user_guide/usemap.md)》。
 
+## 安全提示
+
+- `msagent` 可执行 shell 命令、加载第三方 MCP Server 与 Skill，请仅在可信环境中使用。
+- 建议通过环境变量传入凭据；`msagent` 自身发起的 HTTP 请求默认启用 TLS 证书校验。
+
 ## ❓ FAQ
 
 常见问题与排查入口请参见 《[FAQ](docs/zh/user_guide/faq.md)》。
