@@ -4,12 +4,25 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+
+_CA_BUNDLE_ENV_VARS = ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")
+
+
+def remove_invalid_ca_bundle_env(env: dict[str, str]) -> None:
+    """移除失效的 CA 文件变量，避免 Conda 将已删除环境中的路径传给 httpx。"""
+    for variable in _CA_BUNDLE_ENV_VARS:
+        configured_path = env.get(variable, "").strip()
+        if variable in env and (not configured_path or not Path(configured_path).expanduser().is_file()):
+            env.pop(variable, None)
 
 
 @dataclass(frozen=True)
@@ -126,7 +139,6 @@ def run_msagent(
     if not isinstance(executable, str) or not executable.strip():
         raise ValueError("executable must be a non-empty string")
     executable = executable.strip()
-
     env = os.environ.copy()
     if extra_env:
         # subprocess requires string keys and values. Reject invalid data here
@@ -141,6 +153,16 @@ def run_msagent(
     # DEBUG is mandatory for this validation runner and intentionally overrides
     # a conflicting value supplied by the parent process or extra_env.
     env["MSAGENT_LOG_LEVEL"] = "DEBUG"
+    # 同时控制子进程写出编码；subprocess 的 encoding 只控制父进程解码。
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    remove_invalid_ca_bundle_env(env)
+
+    resolved_executable = shutil.which(executable, path=env.get("PATH"))
+    if resolved_executable is None and sys.platform == "win32" and not executable.lower().endswith(".exe"):
+        resolved_executable = shutil.which(f"{executable}.exe", path=env.get("PATH"))
+    if resolved_executable is None:
+        raise RuntimeError("msagent executable was not found; install the whl and activate its environment")
 
     configured_home = env.get("MSAGENT_HOME", "").strip()
     msagent_home = (
@@ -174,7 +196,7 @@ def run_msagent(
     stderr_path = artifact_path / "stderr.txt"
 
     command = [
-        executable,
+        resolved_executable,
         "-v",
         "--no-stream",
         "--trace-jsonl",
