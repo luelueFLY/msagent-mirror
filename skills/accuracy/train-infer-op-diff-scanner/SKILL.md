@@ -29,7 +29,7 @@ description: RL 强化学习训练与推理（rollout）路径的算子差异性
 
 ---
 
-## 工作流程（6 阶段）
+## 工作流程（5 阶段）
 
 ### 阶段 1：环境与配置解析（预计 2-3 分钟）
 
@@ -220,6 +220,7 @@ print('COMPUTE_TASK_INFO rows =', n)
 |------|---------|------|
 | 1. 显式导出 DB | `analyse()` 后无 `ascend_pytorch_profiler_0.db`（CANN 不支持默认 `text` 同时导 db） | `analyse('${INFER_PT_DIR}', export_type=['db'])` 后重新验证 |
 | 2. host 侧 CSV 备选 | DB 存在但 `COMPUTE_TASK_INFO` 为空 | 改用 `ASCEND_PROFILER_OUTPUT/api_statistic.csv`（或 `operator_details.csv`）中的 CANN 算子名统计，报告中标注「host 侧备选，非 device 侧」 |
+| 3. 终止扫描 | 1、2 兜底操作失败 | 跳过阶段 4、5，直接输出报告，记录已进行的操作与结果 |
 
 
 ### 阶段 4：算子提取与对比分析（预计 3-5 分钟）
@@ -303,7 +304,7 @@ ORDER BY cnt DESC;
 
 #### 产物 1：完整报告 (Markdown) → `<工作目录>/train_infer_op_diff_report.md`
 
-**必须包含**以下章节（参考 `references/final_train_infer_op_analysis.md` 结构，并在此基础上扩展代码调用栈）：
+**必须包含**以下章节（参考 `references/report_template.md`）：
 
 1. **标题 + 元信息**（模型名、配置、脚本路径、采集方式、生成时间）
 2. **算子证据来源**（表格：路径、数据源、DB 文件、算子数）
@@ -375,5 +376,4 @@ ORDER BY cnt DESC;
 ## References
 
 - `references/report_template.md` — 报告模板
-- `references/final_train_infer_op_analysis.md` — 实际操作产出的完整报告范例
-
+- `references/run_qwen3_0_6b_megatron_vllm_ascend.sh` — Qwen3-0.6B GRPO 训练脚本
