@@ -97,7 +97,8 @@ case "${OS}" in
     ;;
   *)
     log_error "Unsupported operating system. Please install msagent manually:"
-    log_error "  python3 -m venv ~/.msagent-venv && ~/.msagent-venv/bin/pip install -U mindstudio-agent"
+    log_error "  uv tool install -U mindstudio-agent"
+    log_error "If uv is unavailable, see the venv fallback section in this script."
     exit 1
     ;;
 esac
@@ -484,7 +485,9 @@ install_venv_fallback() {
     else
       log_error "Could not create a virtualenv (python3-venv may be missing)."
       log_error "On Debian/Ubuntu, install it first:  sudo apt install python3-venv"
-      log_error "or install msagent manually:"
+      log_error "or retry the recommended install path:"
+      log_error "  ${UV_BIN} tool install -U --python \"${MSAGENT_PYTHON}\" --default-index \"${INDEX}\" \"${INSTALL_SPEC}\""
+      log_error "If you prefer the fallback manually:"
       log_error "  ${pybin} -m venv ${venv_dir} && ${venv_dir}/bin/pip install -U -i ${INDEX} ${INSTALL_SPEC}"
       return 1
     fi
@@ -588,7 +591,9 @@ if [ "${INSTALL_OK}" = "0" ]; then
   log_error "uv tool install failed. See the error above."
   if [ "${MSAGENT_NO_FALLBACK:-0}" = "1" ]; then
     log_error "MSAGENT_NO_FALLBACK is set; skipping the venv fallback."
-    log_error "Retry after fixing the issue, or install manually:"
+    log_error "Retry after fixing the issue with the recommended path:"
+    log_error "  ${UV_BIN} tool install -U --python \"${MSAGENT_PYTHON}\" --default-index \"${INDEX}\" \"${INSTALL_SPEC}\""
+    log_error "If you need a manual fallback instead:"
     log_error "  python3 -m venv ~/.msagent-venv && ~/.msagent-venv/bin/pip install -U -i ${INDEX} ${INSTALL_SPEC}"
     exit 1
   fi
