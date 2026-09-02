@@ -18,6 +18,7 @@ from msagent.cli.dispatchers import CommandDispatcher, MessageDispatcher
 from msagent.cli.handlers.bash import BashDispatcher
 from msagent.cli.theme import console, theme
 from msagent.cli.ui.prompt import InteractivePrompt
+from msagent.configs.approval import ToolDecisionRule
 from msagent.cli.ui.renderer import Renderer
 from msagent.core.logging import get_logger
 from msagent.utils.version import check_for_updates
@@ -62,6 +63,7 @@ class Session:
         self._sigint_handler: SignalHandler = None
         self.tool_outputs: list[ToolOutputEntry] = []
         self.latest_tool_output: ToolOutputEntry | None = None
+        self.approval_session_rules: list[ToolDecisionRule] = []
         self.run_recorder = (
             CliRunRecorder(context.trace_jsonl) if getattr(context, "trace_jsonl", None) is not None else None
         )

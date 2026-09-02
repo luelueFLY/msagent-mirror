@@ -22,7 +22,7 @@ from msagent.cli.ui.shared import (
     create_prompt_style,
 )
 from msagent.audit.user_interaction import build_user_response_fields
-from msagent.configs import ToolApprovalConfig
+from msagent.configs import ToolApprovalConfig, ToolDecisionRule
 from msagent.core.logging import get_logger
 from msagent.middlewares.approval import InterruptPayload
 
@@ -162,7 +162,11 @@ class InterruptHandler:
             if not options:
                 options = ["approve", "reject"]
 
-            policy = approval_config.resolve_decision(tool_name, tool_args)
+            policy = self._resolve_decision(
+                approval_config=approval_config,
+                tool_name=tool_name,
+                tool_args=tool_args,
+            )
             if policy == "always_approve":
                 decisions.append({"type": "approve"})
                 continue
@@ -193,12 +197,19 @@ class InterruptHandler:
             user_interacted = True
 
             if selected == "always_approve":
-                approval_config.prepend_decision_rule(
-                    tool_name=tool_name,
-                    tool_args=tool_args,
-                    decision="always_approve",
-                )
-                should_persist = True
+                if self._should_keep_execute_approval_session_only(tool_name=tool_name, tool_args=tool_args):
+                    self._prepend_session_decision_rule(
+                        tool_name=tool_name,
+                        tool_args=tool_args,
+                        decision="always_approve",
+                    )
+                else:
+                    approval_config.prepend_decision_rule(
+                        tool_name=tool_name,
+                        tool_args=tool_args,
+                        decision="always_approve",
+                    )
+                    should_persist = True
                 decisions.append({"type": "approve"})
                 continue
 
@@ -241,9 +252,57 @@ class InterruptHandler:
             question_parts.append("Tool execution requires approval.")
         question_parts.append(f"Tool: {tool_name}")
         question_parts.append(f"Args: {args_text}")
+        if "always_approve" in options:
+            if self._should_keep_execute_approval_session_only(tool_name=tool_name, tool_args=tool_args):
+                question_parts.append(
+                    "Warning: choosing always_approve will apply only to this session for the same call."
+                )
+            else:
+                question_parts.append(
+                    "Warning: choosing always_approve will persist a local rule and auto-approve the same call later."
+                )
+        if "always_reject" in options:
+            question_parts.append(
+                "Note: choosing always_reject will persist a local rule and auto-reject the same call later."
+            )
         question = "\n".join(question_parts)
 
         return await self._prompt_from_options(question=question, options=options)
+
+    def _resolve_decision(
+        self,
+        *,
+        approval_config: ToolApprovalConfig,
+        tool_name: str,
+        tool_args: dict[str, Any],
+    ) -> str:
+        for rule in self._session_decision_rules():
+            if rule.matches_call(tool_name, tool_args):
+                return rule.decision
+        return approval_config.resolve_decision(tool_name, tool_args)
+
+    def _session_decision_rules(self) -> list[ToolDecisionRule]:
+        rules = getattr(self.session, "approval_session_rules", None)
+        return list(rules) if isinstance(rules, list) else []
+
+    def _prepend_session_decision_rule(
+        self,
+        *,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        decision: str,
+    ) -> None:
+        rules = getattr(self.session, "approval_session_rules", None)
+        if not isinstance(rules, list):
+            rules = []
+            setattr(self.session, "approval_session_rules", rules)
+        config = ToolApprovalConfig(decision_rules=list(rules))
+        config.prepend_decision_rule(tool_name=tool_name, tool_args=tool_args, decision=decision)
+        rules[:] = config.decision_rules
+
+    @staticmethod
+    def _should_keep_execute_approval_session_only(*, tool_name: str, tool_args: dict[str, Any]) -> bool:
+        return tool_name == "execute" and bool(tool_args)
 
     @staticmethod
     def _selection_to_decision(selected: str) -> dict[str, Any]:
