@@ -229,6 +229,98 @@ async def test_hitl_persists_always_approve_selection(tmp_path: Path, monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_hitl_keeps_high_risk_execute_always_approve_session_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _build_session(tmp_path)
+    handler = InterruptHandler(session)
+    cfg = ToolApprovalConfig()
+    saved = {"called": False}
+
+    async def _prompt(**_kwargs):
+        return "always_approve"
+
+    monkeypatch.setattr(handler, "_load_approval_config", lambda: cfg)
+    monkeypatch.setattr(handler, "_save_approval_config", lambda _cfg: saved.__setitem__("called", True))
+    monkeypatch.setattr(handler, "_prompt_hitl_decision", _prompt)
+
+    result, _user_interacted = await handler._get_hitl_decisions(
+        {
+            "action_requests": [{"name": "execute", "args": {"command": "rm -rf /tmp/demo"}}],
+            "review_configs": [{"action_name": "execute", "allowed_decisions": ["approve", "reject"]}],
+        }
+    )
+
+    assert result == {"decisions": [{"type": "approve"}]}
+    assert saved["called"] is False
+    assert session.approval_session_rules
+    assert cfg.resolve_decision("execute", {"command": "rm -rf /tmp/demo"}) == "ask"
+
+
+@pytest.mark.asyncio
+async def test_hitl_reuses_session_only_execute_approval_without_persisting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _build_session(tmp_path)
+    handler = InterruptHandler(session)
+    cfg = ToolApprovalConfig()
+
+    handler._prepend_session_decision_rule(
+        tool_name="execute",
+        tool_args={"command": "rm -rf /tmp/demo"},
+        decision="always_approve",
+    )
+
+    prompt_called = False
+
+    async def _never_prompt(**_kwargs):
+        nonlocal prompt_called
+        prompt_called = True
+        return "reject"
+
+    monkeypatch.setattr(handler, "_load_approval_config", lambda: cfg)
+    monkeypatch.setattr(handler, "_save_approval_config", lambda _cfg: None)
+    monkeypatch.setattr(handler, "_prompt_hitl_decision", _never_prompt)
+
+    result, user_interacted = await handler._get_hitl_decisions(
+        {
+            "action_requests": [{"name": "execute", "args": {"command": "rm -rf /tmp/demo"}}],
+            "review_configs": [{"action_name": "execute", "allowed_decisions": ["approve", "reject"]}],
+        }
+    )
+
+    assert result == {"decisions": [{"type": "approve"}]}
+    assert user_interacted is False
+    assert prompt_called is False
+
+
+@pytest.mark.asyncio
+async def test_hitl_prompt_warns_before_persisting_always_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    handler = InterruptHandler(_build_session(tmp_path))
+    captured: dict[str, object] = {}
+
+    async def _prompt_from_options(*, question: str, options: list[str]) -> str | None:
+        captured["question"] = question
+        captured["options"] = options
+        return "approve"
+
+    monkeypatch.setattr(handler, "_prompt_from_options", _prompt_from_options)
+
+    await handler._prompt_hitl_decision(
+        tool_name="execute",
+        tool_args={"command": "rm -rf /tmp/demo"},
+        description="Delete demo files",
+        options=["approve", "reject", "always_approve", "always_reject"],
+    )
+
+    question = str(captured["question"])
+    assert "always_approve will apply only to this session" in question
+    assert "always_reject will persist a local rule" in question
+
+
+@pytest.mark.asyncio
 async def test_hitl_auto_rejects_when_policy_is_always_reject(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     handler = InterruptHandler(_build_session(tmp_path))
     cfg = ToolApprovalConfig()

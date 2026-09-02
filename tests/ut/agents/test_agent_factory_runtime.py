@@ -840,6 +840,7 @@ async def test_probe_tavily_api_key_uses_usage_endpoint_and_caches_success(
 ) -> None:
     monkeypatch.setattr(factory_module, "_TAVILY_KEY_VALIDATION_CACHE", {})
     calls: list[tuple[str, dict[str, str]]] = []
+    client_kwargs: dict[str, object] = {}
 
     class _DummyClient:
         async def __aenter__(self):
@@ -852,11 +853,18 @@ async def test_probe_tavily_api_key_uses_usage_endpoint_and_caches_success(
             calls.append((url, headers))
             return SimpleNamespace(status_code=200)
 
-    monkeypatch.setattr(factory_module.httpx, "AsyncClient", lambda **kwargs: _DummyClient())
+    def _fake_async_client(**kwargs):
+        client_kwargs.update(kwargs)
+        return _DummyClient()
+
+    monkeypatch.setattr(factory_module.httpx, "AsyncClient", _fake_async_client)
 
     assert await AgentFactory._probe_tavily_api_key("tvly-valid") is True
     assert await AgentFactory._probe_tavily_api_key("tvly-valid") is True
     assert calls == [("https://api.tavily.com/usage", {"Authorization": "Bearer tvly-valid"})]
+    assert client_kwargs["verify"] is True
+    assert client_kwargs["follow_redirects"] is True
+    assert client_kwargs["max_redirects"] == 3
 
 
 async def _return_true(_api_key: str) -> bool:

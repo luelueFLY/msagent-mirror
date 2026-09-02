@@ -70,6 +70,7 @@ _TAVILY_SERVER_KEYWORDS = ("tavily",)
 _TAVILY_API_KEY_ENV = "TAVILY_API_KEY"
 _TAVILY_VALIDATE_URL = "https://api.tavily.com/usage"
 _TAVILY_VALIDATE_TIMEOUT_SECONDS = 5.0
+_TAVILY_VALIDATE_MAX_REDIRECTS = 3
 _TAVILY_KEY_VALIDATION_CACHE: dict[str, bool] = {}
 _SEARCH_TOOL_NAME_KEYWORDS = ("search", "web_search")
 _SEARCH_TOOL_DESCRIPTION_KEYWORDS = ("search", "web", "internet", "query")
@@ -1012,7 +1013,12 @@ class AgentFactory:
 
         headers = {"Authorization": f"Bearer {api_key}"}
         try:
-            async with httpx.AsyncClient(timeout=_TAVILY_VALIDATE_TIMEOUT_SECONDS, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=_TAVILY_VALIDATE_TIMEOUT_SECONDS,
+                follow_redirects=True,
+                max_redirects=_TAVILY_VALIDATE_MAX_REDIRECTS,
+                verify=True,
+            ) as client:
                 response = await client.get(_TAVILY_VALIDATE_URL, headers=headers)
         except httpx.HTTPError as exc:
             logger.warning("Unable to validate Tavily API key; keeping built-in web_search fallback: %s", exc)
