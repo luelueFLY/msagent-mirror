@@ -1,0 +1,123 @@
+name: WHL Validator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-whl:
+    name: Build WHL
+    runs-on: ubuntu-latest
+
+    steps:
+      # 检出待构建的源码。
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # 使用固定 Python 版本现场构建待验证的 WHL。
+      - name: Set up build Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build WHL
+        run: |
+          # 根目录 build.py 会遮蔽第三方 build 模块，改由 pip 调用 Hatchling 构建后端。
+          python -m pip wheel --no-deps --wheel-dir dist .
+
+      # 将出包产物提供给后续矩阵验证 job。
+      - name: Upload WHL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msagent-whl
+          path: dist/mindstudio_agent-*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  validate-whl:
+    name: ${{ matrix.os }} / ${{ matrix.installer }} / Python ${{ matrix.python-version }}
+    needs: build-whl
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 一个矩阵任务失败时，保留其余平台和安装器的验证结果。
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        installer: [conda, uv]
+        python-version: ["3.11"]
+
+    steps:
+      # 检出待构建和验证的源码。
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # 下载 build-whl job 生成的待验证 WHL。
+      - name: Download WHL artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: msagent-whl
+          path: dist
+
+      # Conda 任务创建并激活独立的 Python 3.11 环境。
+      - name: Set up Conda
+        if: matrix.installer == 'conda'
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: whl-validator
+          auto-activate-base: false
+          python-version: ${{ matrix.python-version }}
+
+      # uv 任务安装 uv，并在后续步骤中创建独立虚拟环境。
+      - name: Set up uv
+        if: matrix.installer == 'uv'
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      # Bash 登录 shell 能正确加载 setup-miniconda 注入的 Conda 环境。
+      - name: Install and validate WHL with Conda
+        if: matrix.installer == 'conda'
+        shell: bash -l {0}
+        working-directory: tests/whl_validator
+        run: |
+          set -euo pipefail
+          python -m pip install ../../dist/mindstudio_agent-*.whl
+          python -m pip check
+          python -m pip install -r requirements-test.txt
+
+      # 在 uv 创建的 Python 3.11 虚拟环境中安装 WHL 与测试依赖。
+      - name: Install WHL and test dependencies with uv
+        if: matrix.installer == 'uv'
+        shell: bash
+        working-directory: tests/whl_validator
+        run: |
+          set -euo pipefail
+          uv venv --python ${{ matrix.python-version }} .venv
+          uv pip install --python .venv ../../dist/mindstudio_agent-*.whl
+          uv pip install --python .venv -r requirements-test.txt
+
+      # 仅在测试执行时向进程透传 LLM 密钥。
+      - name: Run end-to-end tests with Conda
+        if: matrix.installer == 'conda'
+        shell: bash -l {0}
+        working-directory: tests/whl_validator
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          # 避免 Windows 默认代码页导致 msagent CLI 输出编码失败。
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        run: |
+          set -euo pipefail
+          python -m pytest test_case/ -n auto -v
+
+      - name: Run end-to-end tests with uv
+        if: matrix.installer == 'uv'
+        shell: bash
+        working-directory: tests/whl_validator
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          # 避免 Windows 默认代码页导致 msagent CLI 输出编码失败。
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+        run: |
+          set -euo pipefail
+          uv run --no-project --python .venv pytest test_case/ -n auto -v
