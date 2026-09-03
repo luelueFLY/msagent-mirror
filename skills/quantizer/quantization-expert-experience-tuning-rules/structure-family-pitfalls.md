@@ -125,10 +125,71 @@
 
 ## 7. DiT / 扩散生成模型类
 
-### 7.1 规则
+### 7.1 触发信号
 
-- 生成 DiT 主干外的 `mod`/调制模块、文本/图像调制首层常见**条件性排除**。原因：调制模块控制生成过程的时序/条件信号，信息密度高且误差敏感。
-- 扩散模型低比特可用 SVDQuant 类方案（离群值迁移 + SVD 低秩残差 + 残差量化），解决扩散模型激活离群值强的问题。专家意见可信度：中。
+**结构特征**：`named_modules` 中存在**重复堆叠的 transformer block 容器**，每个 block 子模块包含两个核心分支：
+
+- **attention 分支**（self-attn、cross-attn、single-stream attn，或融合如 FLUX 的 `single_*`）
+- **FFN 分支**（up/gate/down 或等价 MLP）
+
+可选的 **mod / modulation 分支**（时序/条件信号注入），常见于扩散模型。
+
+**容器命名约定**（仅作 `block_container` 自动探测的候选，不要求完全一致）：
+
+| 常见容器名 | 出现模型 |
+|---|---|
+| `blocks` | Wan2.2、Wan2.1、SD3、Sana、HunyuanDiT、CogViewX |
+| `transformer_blocks` | HunyuanVideo |
+| `single_transformer_blocks` | FLUX.1-dev（融合流） |
+
+> §7 的所有经验基于"transformers 风格的重复 block 堆叠"这一**结构特征**，不依赖具体命名。容器名差异由 [`scripts/apply_rollback.py`](scripts/apply_rollback.py) 自动探测处理（见 §7.3 容器名列）。
+
+### 7.2 通用规则（**整层回退是主路径**）
+
+| 优先级 | 模块 | 处理 | 说明 |
+|---|---|---|---|
+| **1（首选 / 默认）** | **早期若干 DiT block 整块回退** | `*blocks.{i}.*` 整块排除 | **DiT 调优的主路径**。`first_n_blocks=N` → `*blocks.0.*` … `*blocks.{N-1}.*`，每条 glob 用 `.{i}.*` 命中该 block 下**全部**子模块（attn.* / ffn.* / norm / modulation / projection）——「把 block {i} 整体踢出量化范围」，**不是**只回退某个子结构 |
+| 2（可选叠加） | `*ffn.down*` / `mlp.down_proj` / `ffn.w2` | 跨所有 block 排除 | FFN 输出投影聚合 up/gate 激活信号，量化误差易在此累积放大；与整层回退叠加使用 |
+| 2（可选叠加） | `*attn.out_proj*` / `attn.o_proj` / `attn.wo` | 跨所有 block 排除 | attention 输出投影聚合多头输出，对表征质量影响大；与整层回退叠加使用 |
+| 3（条件性） | `mod` / `modulation` / 文本·图像调制首层 | 条件性排除 | 调制模块控制生成时序/条件信号，误差敏感；Wan2.2 / HunyuanDiT / FLUX 按结构确认 |
+| 4（仅低比特） | SVDQuant 类方案 | 离群值迁移 + SVD 低秩残差 + 残差量化 | 解决扩散模型激活离群值强的问题；W4A8 / W4A4 路径 |
+
+- **先做整层回退**（优先级 1），评估未达标再叠加结构性回退（优先级 2）；不要跳过整层回退直接做结构性回退。
+- **"整块"语义**：点号分隔 `.{i}.*` 保证只命中 block {i} 内的层，不污染 `blocks.{i+1}` 或顶层非 block 模块。
+- 不建议子结构回退（如 `*blocks.0.attn.out_proj*`）——粒度过细，违反"整块"语义；如需精细化应走 L1 §5 敏感层分析路径。
+- 不建议整网络回退（`first_n_blocks` 超过总块数）——等价于 FP 推理。
+- 上述规则在 Wan2.2 / FLUX / SD3 / HunyuanDiT / Sana / CogViewX 等 DiT 模型族上经验有效；具体 N 值见 §7.3。
+- 专家意见可信度：**高**（整层回退的早期敏感假设）/ **中**（具体 N 值与 pattern 是否包含 `qkv` / `q/k/v` 因模型而异）。
+
+### 7.3 DiT 模型族整层回退默认值
+
+> Agent 调优 DiT 精度时，在本表取默认 `first_n_blocks` → 交给 [`scripts/apply_rollback.py`](scripts/apply_rollback.py) 执行（CLI 仅需 `--first-n-blocks N`，结构性 pattern 由经验库隐式注入）。用户可在 `user_input` 阶段覆盖。
+
+| 模型族 | `first_n_blocks` | 容器名 | 结构化 pattern（可选叠加） |
+|---|---|---|---|
+| **Wan2.2-T2V-A14B** | `5` | `blocks` | `*ffn.down*`, `*attn.out_proj*`（双 expert、双 block 列表，high/low noise 各一套） |
+| **Wan2.2-I2V-A14B** | `5` | `blocks` | 同 T2V-A14B |
+| **Wan2.2-TI2V-5B** | `3` | `blocks` | 同 T2V-A14B（单 expert，参数小，N 略小） |
+| **Wan2.1-T2V-14B** | `5` | `blocks` | `*ffn.down*` |
+| **FLUX.1-dev** | `5` | `single_transformer_blocks` | `*ffn.down*`, `*attn.qkv*`（无 cross-attn） |
+| **HunyuanVideo** | `8` | `transformer_blocks` | `*ffn.down*`, `*attn.qkv*`（模型大、N 略大） |
+| **SD3 / Sana / HunyuanDiT / CogViewX** | `5` | `blocks` | `*ffn.down*`, `*attn.out_proj*` |
+
+#### 7.3.1 调优步进
+
+```
+轮 1：first_n_blocks = N（模型族默认值） + 可选叠加 ffn.down + attn.out_proj
+      ↓ 评估未达预期
+轮 2：first_n_blocks += 5 → N+5
+      ↓ 评估仍未达预期
+轮 3：继续 first_n_blocks += 5 → N+10
+      ↓ 评估仍未达预期
+轮 4：考虑切换低比特方案（SVDQuant）/ 换 FP16 推理
+```
+
+- 每轮只在 `first_n_blocks` 一个数上做加法（增量 5），不改 pattern —— 这是 DiT 调优最简洁的步进路径。
+- 不建议调小 `first_n_blocks`（已回退的 block 重新量化通常会让误差反弹）。
+- 专家意见可信度：W8A8 **高**、W4A4 **中**（DiT 低比特实践较少）。
 
 ---
 

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import datetime as _dt
+import hashlib
 import json
 import sys
 from decimal import Decimal
@@ -46,3 +48,49 @@ def parse_int_list(value: str | None) -> list[int] | None:
             raise ValueError("device_indices must be a JSON array")
         return [int(x) for x in parsed]
     return [int(part.strip()) for part in stripped.split(",") if part.strip()]
+
+
+def file_md5(path: str | Path) -> str:
+    """Return hex MD5 of a file's bytes. Used by quant-tuning scripts that
+    need a stable identifier for practice.yaml / history.yaml (orchestrator
+    dedup)."""
+    return hashlib.md5(Path(path).read_bytes()).hexdigest()
+
+
+def now_iso() -> str:
+    """Return local-time timestamp at second precision (`YYYY-MM-DD HH:MM:SS`).
+
+    Single canonical format so all skill scripts that emit `time` fields are
+    comparable without re-parsing."""
+    return _dt.datetime.now().isoformat(sep=" ", timespec="seconds")
+
+
+def upsert_yaml_section(
+    existing: dict[str, Any],
+    section_name: str,
+    record: dict[str, Any],
+    *,
+    key_field: str,
+) -> dict[str, Any]:
+    """Upsert ``record`` into ``existing[section_name]`` (a list keyed by ``key_field``).
+
+    Returns the updated ``existing`` dict (mutates in place; the dict reference
+    is also returned for chaining). If ``record[key_field]`` matches an
+    existing entry, that entry is replaced; otherwise the record is appended.
+
+    The caller is responsible for writing the dict back to disk in whatever
+    format they prefer (this helper is format-agnostic; pass a parsed YAML
+    dict in, get a parsed YAML dict out)."""
+    records = existing.get(section_name)
+    if not isinstance(records, list):
+        records = []
+    replaced = False
+    for idx, prev in enumerate(records):
+        if isinstance(prev, dict) and prev.get(key_field) == record.get(key_field):
+            records[idx] = record
+            replaced = True
+            break
+    if not replaced:
+        records.append(record)
+    existing[section_name] = records
+    return existing

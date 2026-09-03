@@ -158,6 +158,7 @@ def _validate_completion_output(subagent_type: str, output_data: dict[str, Any])
         "quant-tuning-practice-generator": _validate_practice_generator_output,
         "quant-tuning-evaluation-generator": _validate_evaluation_generator_output,
         "quant-tuning-quantizer": _validate_quantizer_output,
+        "quant-tuning-quantize-dit": _validate_quantizer_output,
         "quant-tuning-evaluator": _validate_evaluator_output,
         "msmodelslim-model-analysis": _validate_model_analysis_output,
         "msmodelslim-model-adapt": _validate_model_adapt_output,
@@ -295,12 +296,16 @@ def _validate_model_analysis_output(output_data: dict[str, Any]) -> list[str]:
     implementation_source = _coerce_str(output_data.get("implementation_source"))
     if not implementation_source:
         errors.append("missing_implementation_source")
-    elif implementation_source not in {"transformers", "model-local", "blocked"}:
+    elif implementation_source not in {"transformers", "model-local", "diffusers", "blocked"}:
         errors.append("invalid_implementation_source")
     if not _coerce_str(output_data.get("summary")):
         errors.append("missing_summary")
     if not _coerce_str(output_data.get("report_path")):
         errors.append("missing_report_path")
+    if _coerce_str(output_data.get("model_family")) == "dit" and next_step == "model-adapt":
+        # DiT 分析通过：必须带回推理仓路径，orchestrator 才能委派 msmodelslim-model-adapt
+        if not _coerce_str(output_data.get("inference_repo")):
+            errors.append("dit_requires_inference_repo")
     commands = output_data.get("commands")
     if commands is not None:
         errors.extend(_validate_commands(output_data, required_names=set(), optional_names=set()))
@@ -316,6 +321,13 @@ def _validate_model_adapt_output(output_data: dict[str, Any]) -> list[str]:
         errors.append("invalid_verification_steps")
     elif not all(isinstance(step, dict) and step.get("passed") is not None for step in verification_steps):
         errors.append("invalid_verification_steps")
+    if _coerce_str(output_data.get("model_family")) == "dit":
+        # DiT 扩展节：必须带回推理仓路径与适配产物
+        if not _coerce_str(output_data.get("inference_repo")):
+            errors.append("dit_requires_inference_repo")
+        artifact_paths = output_data.get("artifact_paths")
+        if not isinstance(artifact_paths, dict) or not _coerce_str(artifact_paths.get("adapter_py")):
+            errors.append("dit_requires_artifact_adapter_py")
     errors.extend(
         _validate_commands(
             output_data,

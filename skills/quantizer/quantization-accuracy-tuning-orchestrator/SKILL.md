@@ -3,7 +3,7 @@ name: quantization-accuracy-tuning-orchestrator
 description: End-to-end automated model quantization and accuracy tuning workflow. Use when user asks for automated model quantization and accuracy tuning, e.g. "自动量化", "量化调优", "一键量化", "精度调优", etc. 当用户给出多卡（≥2 卡）卡号时，量化阶段通过 EP 并行适配（msmodelslim-ep-parallel-adaptation）保证多卡 EP 并行，调优主流程仍在本 Skill。
 license: Apache-2.0
 metadata:
-  version: 0.9.5
+  version: 0.9.6
   domain: quantization
   framework: msmodelslim
   protocol: mixed
@@ -43,11 +43,11 @@ metadata:
 
 - 支持：
     - Decoder-only LLM 的自动量化与调优
-    - VLM 中语言模型主干的自动量化与调优
+    - VLM 文本主干的自动量化与调优（仅 LLM/文本路径）
+    - DiT 扩散模型 的量化（W8A8 动态 data-free；精度调优通过经验库 L2 §7 的 `apply_rollback.py` 整层回退策略扩展 exclude 列表，闭环由本 Skill 调度）
 - 不支持：
     - 既非 transformers 也非模型目录内 `modeling_*.py` 的实现
-    - VLM 中视觉编码器和多模态投影层的量化
-    - 多模态生成模型（图像/视频/语音生成）的自动量化与调优
+    - DiT 场景下未提供推理仓路径的实现
 
 ## 本Skill适用范围
 
@@ -163,6 +163,52 @@ metadata:
 - 调优开始前已预启动服务，将脚本路径与服务地址告知 agent
 - 调优过程中由 agent 代为启动常驻服务（首轮启动，后续轮次 reload）
 若用户未提供或不确定，则走默认的每轮启停服务流程。详见 `references/quantization_tuning.md` 的「服务化推理脚本」。
+
+## 子 Skill 路由（按 `model_family`）
+
+主 Agent 读取 `analysis_result.yaml.model_family` 字段，按下表委派到对应子 Skill：
+
+| `model_family` | 分析 | 量化 | 推理（可选） |
+|---|---|---|---|
+| `llm` | `quant-tuning-analyze-llm` | `quant-tuning-quantize-llm` | `quant-tuning-infer-llm` |
+| `vlm_text` | `quant-tuning-analyze-vlm` | `quant-tuning-quantize-vlm` | `quant-tuning-infer-vlm` |
+| `dit` | `msmodelslim-model-analysis`（统一分析：识别 `model_family=dit` + 索取 `inference_repo`，回传 `next_step: model-adapt`）→ `msmodelslim-model-adapt`（DiT 扩展节：适配器生成与四步验证） | `quant-tuning-quantize-dit`（YAML `apiversion=multimodal_sd_modelslim_v1`） | `quant-tuning-infer-dit`（MindIE-SD） |
+| `dit`（调优回路） | `quant-tuning-evaluate`（DiT 扩展节，可选 FP baseline 模式，**bash 模板**：通过 `execute` 执行，不是 `Task`） | 直接调 `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py`（整层回退）+ `quant-tuning-quantize-dit` | `quant-tuning-evaluate`（DiT 扩展节：vbench.py 批量推理产 infer_outputs）→ `quant-tuning-score-dit`（**脚本**：跑 `scripts/score.py` 做 VBench 评分，AISBench-VBench） |
+
+约束：
+
+- 路由逻辑与既有 LLM 路径完全一致，仅扩展 `dit` 分支
+- DiT 量化走 **`MultimodalSDModelslimV1QuantService`**（YAML `apiversion=multimodal_sd_modelslim_v1`），与 LLM/VLM 的 `modelslim_v1` 区分
+- 不修改既有 LLM 行为的字段语义
+- 共享同一套输出规范（`output_format.md`）、同一套 `workdir/output_dir` 管理、同一套历史/缓存机制
+- **不**为 DiT 增加专属输出章节或路径命名规则
+- **不**为 DiT 引入新的注册路径（与 LLM/VLM 共用 `config.ini`）
+
+### DiT 调优回路（追加）
+
+按 `model_family=dit` 路由后，orchestrator 委派以下子 Skill（详见 [`docs/dit_tuning/`](../../../docs/dit_tuning/README.md)）：
+
+| 子 Skill / 脚本 | 输入关键字段 | 输出关键字段 | 备注 |
+|---|---|---|---|
+| `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py` | `--base-practice`, `--first-n-blocks`（或 `--block-indices`）, `--output-practice` | `appended`, `md5`, `block_container`（stdout JSON） | **直接调脚本，不走 subagent**；`first_n_blocks` 默认值从 [`quantization-expert-experience-tuning-rules/structure-family-pitfalls.md`](../../../msagent/skills/quantizer/quantization-expert-experience-tuning-rules/structure-family-pitfalls.md) §7 读取 |
+| `quant-tuning-quantize-dit` | `config_path`, `model_path`, `save_path`, `device` | `success`, `quantized_path`, `exit_code` | 复用 `quant-tuning-quantizer` 字段表（见 `quantization_tuning.md`） |
+| `quant-tuning-evaluate`（DiT 扩展节） | `INFER_REPO`, `FP_WEIGHTS`（→ `--ckpt_dir`，始终 FP）, `QUANT_WEIGHTS`（FP baseline 留空）, `OUT_DIR`, `ROUND`, `NPROC`, `VBENCH_ARGS` | envelope: `ok`, `exit_code`, `log_path`, `manifest_path` | 本 skill 不评分（仅产出视频）；详见 [`quant-tuning-evaluate/references/dit/evaluate_workflow.md`](../../quant-tuning-evaluate/references/dit/evaluate_workflow.md)。**FP baseline 模式：`QUANT_WEIGHTS` 留空**（vbench.py 的 `--ckpt_dir` 始终指 FP，量化走第二个 flag 如 Wan2.2 `--quant_dit_path`）；orchestrator 启用前必须回显预估时长（FP 比量化慢 1.5-3×） |
+| `quant-tuning-score-dit` | `infer_outputs`, `full_json_dir`, `vbench_cache_dir`, `baseline_outputs`（可选）, `score_dimensions`（可选）, `baseline_tolerance`（可选）, `round`（可选） | `scores`, `quality_score`, `semantic_score`, `overall_score`, `commands`；启用 baseline 追加 `loss_vs_baseline`, `is_satisfied` | **已实现**（AISBench-VBench）；需按 §1 触发条件启用 |
+
+完整字段表见 [`references/subagent_io_protocol.md`](references/subagent_io_protocol.md) 末尾的"DiT 调优回路字段"节。
+
+#### 调优循环退出条件（DiT 路径）
+
+`quant-tuning-score-dit` 可返回真实 `is_satisfied`，调优回路具备"达标即停"语义。退出条件按以下顺序判断：
+
+1. **`is_satisfied=true`** —— 仅当 `quant-tuning-score-dit` 成功执行且 `--baseline-outputs` 非空（即与 FP baseline 对比通过）时成立；等价于 `loss_vs_baseline >= -tolerance`（默认 `tolerance=0.05`）。
+2. 用户显式说停（`stop_tuning=true`）
+3. 达到 `max_iterations`（默认 5）
+4. rollback 追加后量化失败 / 推理 NaN → 上一轮作为最优，停止追加
+5. `first_n_blocks` 规则耗尽（无法生成新 exclude 项）→ 自动退出
+6. `quant-tuning-score-dit` 未启用（用户未提供数据集 / 评分器 / 接受时长）→ **不评分**，按 `max_iterations` / 用户叫停退出。
+
+历史轮次记录由 `quant-tuning-history-append-dit`（若 orchestrator 接入）或既有 `history_append.py` 扩展字段写入。
 
 ## 执行注意事项
 

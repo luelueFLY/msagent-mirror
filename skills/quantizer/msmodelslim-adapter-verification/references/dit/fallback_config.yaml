@@ -1,0 +1,38 @@
+# DiT 全回退量化模板（apiversion: multimodal_sd_modelslim_v1）
+#
+# step2 用：include/exclude 全选 → 不量化任何层，只验证「适配器注册 + 量化流程 + 保存」链路。
+# 三条硬约束、inference_config 填写详见同目录 README.md。
+# 占位符 _CALIB_DATASET_ 由 scripts/step2_run_quantization_dit.py 替换；手工使用请自行替换。
+
+apiversion: multimodal_sd_modelslim_v1
+
+spec:
+  dataset: "_CALIB_DATASET_"  # 必填字符串。三种可用形态见 README.md「三条硬约束 #1」
+
+  process:
+    - type: "linear_quant"
+      qconfig:
+        act:
+          scope: "per_token"     # int8 → per_token（mxfp8 才用 per_block）
+          dtype: "int8"
+          symmetric: True
+          method: "minmax"
+        weight:
+          scope: "per_channel"   # int8 → per_channel
+          dtype: "int8"
+          symmetric: True
+          method: "minmax"
+      include: ["*"]
+      exclude: ["*"]             # 全部回退
+
+  save:
+    - type: "mindie_format_saver"  # DiT 用 MindIE-SD（LLM/VLM 是 ascendv1_saver）
+      part_file_size: 0            # 0 = 不分文件
+
+  multimodal_sd_config:
+    dump_config:
+      enable_dump: false           # 全回退不消费校准数据，短路 prepare_calib_data（不走浮点 dump）
+      capture_mode: "args"
+      dump_data_dir: ""            # 留空 → 默认落到 save_path
+
+    inference_config: {}           # 全回退可留空；step4 必须按目标推理仓补齐（README.md）

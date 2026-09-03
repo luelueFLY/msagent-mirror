@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""步骤2：执行全回退量化（精简版，支持 LLM/VLM）。"""
+"""步骤2：执行全回退量化（精简版，支持 LLM/VLM）。
+
+DiT 请用 step2_run_quantization_dit.py。
+"""
 
 import argparse
 import os

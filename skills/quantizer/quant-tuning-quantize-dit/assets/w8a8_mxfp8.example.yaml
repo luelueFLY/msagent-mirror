@@ -1,0 +1,103 @@
+# W8A8 MXFP8（data-free）量化 YAML 示例 — DiT（扩散/多模态生成）
+#
+# 本示例以 HunyuanVideo（重构路径）为参考，结构与 msmodelslim 主仓
+# `lab_practice/hunyuan_video/hunyuan_video_w8a8f8_mxfp.yaml` 对齐。
+# HunyuanVideo 是当前 **唯一**已迁移到 `MultimodalPipelineInterface` 且
+# lab_practice YAML 已 validated 的 DiT；其它 DiT（Wan2.2-T2V/I2V/TI2V、
+# FLUX.1-dev（已迁移）、SD3、Sana、HunyuanDiT、CogViewX 等）的 YAML
+# 在 `inference_config` 字段集合上需按各自推理仓的 `parse_args` 调整。
+#
+# 重要：
+#   - apiversion 固定为 multimodal_sd_modelslim_v1；
+#   - 走 MultimodalSDModelslimV1QuantService，统一 MultimodalPipelineInterface 重构路径；
+#     不再保留 LegacyMultimodalPipelineInterface；
+#   - "data-free" 指 **不引入外部激活校准数据**；MXFP8 path 通常显式
+#     设 `dump_config.enable_dump: False`（per-block 浮点量化不走
+#     inference_dump_calib_data 路径），但 spec.dataset 仍建议显式写，
+#     保持与 int8 路径一致的语义；
+#   - 本模板仅展示 `linear_quant` 一种 process step；不展示 smooth / quarot /
+#     iter_smooth / flex_smooth_quant / awq 等抑制/校准策略的 YAML 形态；
+#     若引入，由 orchestrator 调 quantization-expert-experience-tuning-rules/
+#     scripts/apply_rollback.py（整层回退）在 `spec.process` 中追加对应 step
+#     后再回到 quantize-dit 执行。
+#   - 双专家模型（如 Wan2.2-T2V-A14B）的 expert key 须与 init_model 返回 dict 一一对应
+#     （{"low_noise_model": ..., "high_noise_model": ...}）。
+#
+# 注意：YAML 顶层除 apiversion / metadata / spec 外，**禁止**额外字段
+# （model_family / inference_repo 不要写在顶层，
+#  会被 MultimodalSDModelslimV1QuantConfig 的 Pydantic schema 拒绝）。
+#  orchestrator 路由所需的 model_family / inference_repo
+#  通过 analysis_result.yaml 与 subagent_io 协议字段传递。
+
+apiversion: multimodal_sd_modelslim_v1
+
+metadata:
+  config_id: hunyuan_video_w8a8_mxfp8      # 配置标识；不是 label，是 config_id
+  score: 0.95
+  verified_model_types:                    # 与主仓 hunyuan_video_w8a8f8_mxfp.yaml 对齐
+    - HunyuanVideo
+  label:
+    w_bit: 8
+    a_bit: 8
+    is_sparse: false
+    kv_cache: false                        # DiT 不依赖 KV cache
+    fa_quant: false                        # 本阶段不启用 FA3（仅 linear_quant）
+
+spec:
+  # 本模板仅演示 `linear_quant` 一种 process step；如需叠加其它
+  # 策略（smooth / quarot / fa3_quant / …），在下方追加对应 step 即可，
+  # 各 step 的 `exclude` 互不影响，由 yaml_utils.merge_exclude 选择首个
+  # 含 exclude 的 step 写入。
+  process:
+    - type: "linear_quant"
+      qconfig:
+        act:
+          scope: "per_block"               # 匹配规则: dtype=int8 → scope=per_token, dtype=mxfp8 → scope=per_block
+          dtype: "mxfp8"
+          symmetric: true
+          method: "minmax"
+        weight:
+          scope: "per_block"               # 匹配规则: dtype=int8 → scope=per_channel, dtype=mxfp8 → scope=per_block
+          dtype: "mxfp8"
+          symmetric: true
+          method: "mse_round"               # MXFP8 weight 经验值用 mse_round（act 仍 minmax）
+      include:
+        - "*"
+      exclude:                             # 按目标模型实际需要排除；HunyuanVideo 主仓排除 *mod*
+        - "*mod*"
+
+  # 校准 prompt 集：短名（在 msmodelslim/lab_calib/ 下解析）/ 绝对路径 / 相对路径。
+  # 建议显式写 —— 保持与 int8 路径一致的语义；MXFP8 path 多数场景下不消费
+  # inference_dump_calib_data，但仍建议给一个正确的短名以便回退/复现。
+  # 现成短名：hunyuanvideo | wan2_2_t2v | wan2_2_i2v | wan2_2_ti2v
+  # 自建：目录内放一个 index.jsonl，每行至少含非空 text，I2V 追加 image（相对路径）；
+  #      模板见 assets/index.example.jsonl，说明见 assets/calib_dataset.md。
+  dataset: hunyuanvideo
+
+  # 默认 MindIE-SD 格式
+  save:
+    - type: "mindie_format_saver"
+      part_file_size: 0
+
+  multimodal_sd_config:
+    # MXFP8 是 per-block 浮点量化，不走 inference_dump_calib_data 路径，
+    # 显式关闭 dump 以避免无谓浮点推理；data-free 语义不变。
+    dump_config:
+      enable_dump: false
+      capture_mode: "args"
+      dump_data_dir: ""                    # 留空 → 默认 save_path
+
+    # 重构路径统一使用 inference_config（Pydantic 校验，与原推理仓 parse_args 对齐）
+    # 字段名 / 默认值 / 入口脚本 详见:
+    #   ../../msmodelslim-model-adapt/references/dit/inference_config_field_map.md
+    # 定位方法见 inference_repo 的 README.md。
+    inference_config:
+      model_resolution: "720p"             # HunyuanVideo hyvideo.config parse_args
+      video_size: [720, 1280]              # (height, width)
+      video_length: 129
+      infer_steps: 50
+      cfg_scale: 1.0
+      embedded_cfg_scale: 6.0
+      flow_shift: 7.0
+      num_videos: 1
+      batch_size: 1

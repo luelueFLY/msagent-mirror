@@ -78,7 +78,7 @@ msmodelslim/model/<model_type>/
 
 #### 3) `generate_model_visit(model) -> Generator[ProcessRequest, Any, None]`
 
-- **职责**：定义“按什么顺序遍历哪些模块”进行逐层处理。
+- **职责**：定义"按什么顺序遍历哪些模块"进行逐层处理。
 - **输入**：初始化后的模型。
 - **输出**：按顺序 `yield ProcessRequest`（每个 request 对应一个待处理模块）。
 - **实现建议**：以真实 decoder/block 顺序输出，不跳层、不重排；名称路径应可唯一定位模块。
@@ -114,13 +114,13 @@ msmodelslim/model/<model_type>/
 
 必须以真实 `modeling` 代码为准，确认层路径、命名和 forward 行为后再写适配器。
 
-### 3) VLM 只走“视觉整体 + 文本逐层”
+### 3) VLM 只走"视觉整体 + 文本逐层"
 
 - 优先复用 VLM 基类
 - visit/forward 中视觉模块与文本层顺序保持一致
 - 图文融合逻辑需对齐目标模型官方 forward
 
-### 4) MoE 融合结构优先按“unpack 后纯线性层”适配
+### 4) MoE 融合结构优先按"unpack 后纯线性层"适配
 
 很多新模型的 MoE 使用融合/打包权重（常见为 3D 张量），而量化流程通常更适合 `nn.Linear` 形式的专家实现。
 
