@@ -13,6 +13,7 @@ subagents:
   - quant-tuning-quantizer
   - msmodelslim-model-analysis
   - msmodelslim-model-adapt
+  - msmodelslim-anti-outlier-adapt
 recursion_limit: 1000
 tools:
   patterns:

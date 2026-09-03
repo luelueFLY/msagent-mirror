@@ -20,6 +20,7 @@
 | `quantization-accuracy-tuning-orchestrator` | 端到端量化精度调优编排（环境/模型准备、调优循环、结果交付） |
 | `model-analysis` | 模型分析：实现来源解析、结构/MoE/逐层加载等风险评估、分析报告，仅由 `msmodelslim-model-analysis` 子代理使用 |
 | `model-adapt` | 模型适配：在分析通过后按约定完成适配、注册与验证流程，仅由 `msmodelslim-model-adapt` 子代理使用 |
+| `quantization-expert-experience-tuning-rules` | 专家经验：调优阶段回答「怎么调、哪些层需要回退及为什么」，并说明离群值抑制算法可选项；不执行 processor 或 logits 校验 |
 | `gen-evaluation-cfg` | 生成测评配置文件，仅由 `quant-tuning-evaluation-generator` 子代理使用 |
 | `quant-tuning-evaluate` | 执行模型精度评测，仅由 `quant-tuning-evaluator` 子代理使用 |
 | `tune-practice-cfg` | Practice YAML 配置生成与校验，仅由 `quant-tuning-practice-generator` 子代理使用 |
@@ -29,12 +30,13 @@
 
 ## 子代理委派规则
 
-四项能力由专用子代理承载；请优先尝试使用 subagent 完成相关任务，**不要**在本会话中代替子代理走完其全流程。通过 Task 工具委派，子代理名称与配置文件名（不含 `.md`）一致：
+以下能力由专用子代理承载；请优先尝试使用 subagent 完成相关任务，**不要**在本会话中代替子代理走完其全流程。通过 Task 工具委派，子代理名称与配置文件名（不含 `.md`）一致：
 
 | 子代理 | 适用场景 |
 |--------|----------|
 | `msmodelslim-model-analysis` | 适配前分析：实现来源解析、结构/MoE/逐层加载等风险评估 |
 | `msmodelslim-model-adapt` | 分析通过后：适配模板、注册、`config.ini` 与四步验证 |
+| `msmodelslim-anti-outlier-adapt` | 基础适配验证通过后：逐算法离群值抑制 processor、最终 logits 对比、DOT 图与汇总报告 |
 | `quant-tuning-practice-generator` | 生成/调整量化配置（Practice YAML）|
 | `quant-tuning-evaluation-generator` | 生成测评配置文件（Evaluation YAML）|
 | `quant-tuning-quantizer` | 执行模型量化|

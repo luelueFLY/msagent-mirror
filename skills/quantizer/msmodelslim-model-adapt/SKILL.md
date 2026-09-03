@@ -1,7 +1,6 @@
 ---
 name: msmodelslim-model-adapt
-description:
-  为 msModelSlim 创建基础 Transformers 模型适配器（Model Adapter）。
+description: 为 msModelSlim 创建基础 Transformers 模型适配器（Model Adapter）。
   包含创建适配器、实现必需接口与注册安装流程。
   适用：Decoder-only LLM、理解类 VLM（仅 LLM/text 部分）。
   多模态生成（DiT/扩散，含双/多专家）见下方「多模态生成扩展」节，按需加载。
@@ -10,7 +9,7 @@ description:
 
 # msModelSlim 基础模型适配 Skill
 
-本 Skill 指导如何为新模型创建基础适配器，使其跑通 W8A8/W4A16 量化流程。
+本 Skill 指导如何为新模型创建适配器，使其跑通基础量化流程。
 
 > 说明：逐层量化（按层加载/懒加载）属于高阶可选特性，不是基础适配必需项。
 > 仅当 CPU 内存无法全量加载权重，或用户明确要求时，再在基础适配和四步验证（由 `msmodelslim-adapter-verification` 执行）完成后启用。
@@ -26,6 +25,7 @@ description:
 ## 核心工作流
 
 ### 1. 权重来源确认（新增必做提示）
+
 - **先询问并优先使用用户自有权重**：要求用户先提供本地模型权重路径（或已下载模型目录）。
 - **仅在用户确认"没有权重"时再下载**：再协助用户执行下载流程，不要默认直接下载。
 - **下载建议**：
@@ -33,10 +33,12 @@ description:
   - 若进入完整量化/验证流程，需补齐可用权重文件。
 
 ### 2. 准备工作
+
 - **分析模型**：阅读 `config.json` 与 `modeling_*.py`，确认结构与实现。
   - 详见：[模型结构分析指南](references/model_analysis.md)
 
 ### 3. 创建适配器
+
 - **使用模板**：
   - LLM: `assets/model_adapter_template.py`
   - VLM: `assets/vlm_model_adapter_template.py`
@@ -64,15 +66,18 @@ description:
   - 详见：[适配器实现指南](references/implementation_guide.md)
 
 ### 4. 注册与安装
+
 - 在 `config/config.ini` 注册模型与入口，并执行 `bash install.sh` 安装msModelSlim。
 - 详见：[适配器注册指南](references/registration_guide.md)
 
 ### 5. 功能性验证（独立 Skill）
+
 - 适配器开发完成后，告知用户可自动执行功能性验证。
 - 验证流程已独立为：`msmodelslim-adapter-verification`。
 - 该验证 Skill 会自动按四步执行：生成测试模型 -> 全回退量化 -> 权重一致性与可加载/保存验证 -> 实际量化与描述文件规则校验。
 
 ### 6. 可选高阶特性：逐层量化
+
 - 触发时机：
   - CPU 内存无法全量加载模型权重。
   - 用户明确要求"逐层量化/逐层加载/懒加载/按层加载"。
@@ -80,6 +85,13 @@ description:
   - 必须先完成基础适配与四步验证，再进入逐层量化改造。
 - 实现与验证指引：
   - 详见独立 Skill：`msmodelslim-layer-wise-quantization`
+
+### 7. 离群值抑制适配交接
+
+离群值抑制是基础模型适配之后的独立流程，不属于本 Skill 的适配实现或四步验证。本 Skill
+只在适配器已注册且 `msmodelslim-adapter-verification` 四步全部通过后，向
+`msmodelslim-anti-outlier-adapt` 交付模型路径、适配器入口、checkpoint 身份和验证产物路径。
+验证未通过时不得启动离群值抑制，也不得把其 logits 结果当作基础适配通过的证据。
 
 ---
 
@@ -107,20 +119,20 @@ description:
 
 模板入口（指针）：
 
-| 子架构 | 模板/骨架 |
-|------|------|
-| DiT 单网络 | `assets/dit_model_adapter_template.py` |
-| DiT 双/多专家 | `assets/dit/skeleton.md` |
+| 子架构        | 模板/骨架                              |
+| ------------- | -------------------------------------- |
+| DiT 单网络    | `assets/dit_model_adapter_template.py` |
+| DiT 双/多专家 | `assets/dit/skeleton.md`               |
 
 ### E2. 四步验证 flag（DiT 必加）
 
-| flag | 含义 |
-|------|------|
-| `--skip-random-model` | DiT 不接受随机权重生成 |
-| `--model-family dit` | 标识 DiT 族 |
-| `--inference-repo <path>` | 推理仓路径 |
-| `--reference-weights <path>` | 参考权重路径 |
-| `--rules-path <path>` | 描述文件规则路径 |
+| flag                         | 含义                   |
+| ---------------------------- | ---------------------- |
+| `--skip-random-model`        | DiT 不接受随机权重生成 |
+| `--model-family dit`         | 标识 DiT 族            |
+| `--inference-repo <path>`    | 推理仓路径             |
+| `--reference-weights <path>` | 参考权重路径           |
+| `--rules-path <path>`        | 描述文件规则路径       |
 
 详见 `msmodelslim-adapter-verification` 的「四步验证流程」表格。每步 `passed=true` 才视为通过；任一失败即中止并回传 `status: failed`。
 

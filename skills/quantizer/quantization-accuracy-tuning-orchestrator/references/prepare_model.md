@@ -14,6 +14,7 @@
 |--------|----------|
 | `msmodelslim-model-analysis` | 适配前分析：实现来源解析、结构/MoE/逐层加载等风险评估；DiT/扩散场景下识别 `model_family=dit` 并索取 `inference_repo` |
 | `msmodelslim-model-adapt` | 模型适配与验证（统一入口）：LLM/VLM 走主流程；`model_family=dit` 走多模态生成扩展节（适配器生成 + 四步验证） |
+| `msmodelslim-anti-outlier-adapt` | 基础适配验证通过后：用已安装 msModelSlim API 提取逐算法 DOT 图并执行独立 logits 门禁 |
 
 > DiT 适配细节与四步验证由 `msmodelslim-model-adapt` 的 DiT 扩展节承载（工作流见 `msmodelslim-model-adapt/references/dit/adaptation_workflow.md`），orchestrator 仅负责按 `model_family` 路由与产物串联——分析回传 `next_step: model-adapt` 后委派 `msmodelslim-model-adapt`，与 LLM/VLM 委派方式一致。
 
@@ -21,7 +22,7 @@
 
 ### 1. 检查模型是否已支持
 
-查询用户提供的 `model_type` 是否已在 `msmodelslim/config/config.ini` 的 `[ModelAdapter]` 中注册。注意 `model_type` 不是模型权重路径中 `config.json` 里的 `model_type`，一般形如 `Qwen3-32B`、`DeepSeek-V3`。如果已注册且适配器存在，则跳过本文档的后续 subagent 委派。
+查询用户提供的 `model_type` 是否已在 `msmodelslim/config/config.ini` 的 `[ModelAdapter]` 中注册。注意 `model_type` 不是模型权重路径中 `config.json` 里的 `model_type`，一般形如 `Qwen3-32B`、`DeepSeek-V3`。如果已注册且基础适配四步验证有效，则跳过基础适配；选定算法的逐算法 DOT、logits 门禁或汇总报告不完整时仍须执行独立的离群值抑制流程。
 
 ### 2. 委派模型分析
 
@@ -34,13 +35,27 @@
 - **LLM/VLM 路径**：仅当分析回传 `next_step: "model-adapt"` 时，委派 `msmodelslim-model-adapt` subagent。`next_step: "dequant"` 时先走反量化 skill；`blocked` / `need_user_input` 时停止并向用户说明（细节见 `summary` 与 `report_path`）。`description` **必须**包含 MSAGENT_IO 块，字段见下文。
 - **DiT 路径**：与 LLM/VLM 同一委派流程。分析识别为 DiT 且缺 `inference_repo` 时回传 `next_step: need_user_input`，主 Agent 用 `AskUserQuestion` 取得推理仓路径后，**再次委派同一 subagent** `msmodelslim-model-analysis` 并带上 `inference_repo`；分析回传 `next_step: model-adapt`（附 `model_family: dit`、`inference_repo`）后，委派 `msmodelslim-model-adapt` 并在 `input` 附 `inference_repo`，由其 DiT 扩展节完成适配器生成与四步验证。
 
-### 4. 最终验证
+### 4. 委派离群值抑制适配
+
+只有步骤 3 的基础适配及四步验证全部通过后才进入此步骤，单独调用
+`msmodelslim-anti-outlier-adapt` 完成，主 Agent 不代为执行。用户未指定算法时执行默认四项
+`quarot`、`flex_smooth_quant`、`flex_awq_ssz`、`iter_smooth`；用户明确指定时执行其所选
+子集。每项从同一原始 checkpoint 单独加载干净模型、只应用一个 processor、记录最终 logits，
+不得串联算法、复用已变换模型或执行量化，并产生独立 DOT、JSON 比较结果和汇总
+`anti_outlier_report.md`，不向后续调优流程输出能力矩阵。执行配置读取 msModelSlim 官方
+`*_default` 模板；不得在 msAgent 仓库新增结构扫描、hook 或 formatter 脚本，不得依赖源码树
+`docs/zh`。
+
+### 5. 最终验证
 
 确认以下条件均已满足后，方可进入下一阶段（量化配置调优）：
 
 - [ ] 模型适配已完成，适配器已注册
 - [ ] 模型权重文件完整可加载
 - [ ] 模型可在目标设备（NPU）上正常执行前向推理
+- [ ] 已通过 msModelSlim `fast_ops_grapher` 为每个选定算法生成非空 DOT 图
+- [ ] 每个选定算法均已独立完成 processor 与变换前后浮点 logits 门禁
+- [ ] 已生成包含逐算法对比结果和逐算法图链接的 `anti_outlier_report.md`
 
 若上述任何步骤失败，须向用户明确报告原因并停止流程。
 

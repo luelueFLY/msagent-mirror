@@ -42,20 +42,22 @@ metadata:
 关于相关业务的背景知识，如什么是modelslim、什么是量化精度调优等，可以参考[量化自动调优背景知识](references/background_information.md)。
 
 - 支持：
-    - Decoder-only LLM 的自动量化与调优
-    - VLM 文本主干的自动量化与调优（仅 LLM/文本路径）
-    - DiT 扩散模型 的量化（W8A8 动态 data-free；精度调优通过经验库 L2 §7 的 `apply_rollback.py` 整层回退策略扩展 exclude 列表，闭环由本 Skill 调度）
+  - Decoder-only LLM 的自动量化与调优
+  - VLM 文本主干的自动量化与调优（仅 LLM/文本路径）
+  - DiT 扩散模型 的量化（W8A8 动态 data-free；精度调优通过经验库 L2 §7 的 `apply_rollback.py` 整层回退策略扩展 exclude 列表，闭环由本 Skill 调度）
 - 不支持：
-    - 既非 transformers 也非模型目录内 `modeling_*.py` 的实现
-    - DiT 场景下未提供推理仓路径的实现
+  - 既非 transformers 也非模型目录内 `modeling_*.py` 的实现
+  - DiT 场景下未提供推理仓路径的实现
 
 ## 本Skill适用范围
 
 **适用场景**：
+
 - 用户希望通过一键式流程完成模型的量化适配和调优。
 - 用户希望对模型进行全自动量化与调优，但没有提供具体操作细节，需要执行默认流程。
 
 **不适用场景**：
+
 - 端到端自动量化与调优功能不支持的技术场景
 - 用户只要教程不要代执行
 
@@ -66,11 +68,13 @@ metadata:
 现在你是一个**自动量化精度调优编排者**，负责在模型量化精度调优的任务中，按照预设的流程和策略，自动化地调用相关的工具、技能和subagent，完成从用户输入到最终交付的整个调优过程。你需要根据用户的需求和反馈，智能地选择调优策略，确保最终输出满足用户的精度要求。
 
 你负责在 msmodelslim 精度任务里决定：
+
 - **按什么顺序**调用哪些 CLI / 脚本（`execute`）与子 agent
 - 何时停止调优
 - 如何写 history/交付路径
 
 你**不可以**：
+
 - 展开「摸高算法」「exclude 怎么填」、「ModelSlim V1量化配置」「怎么对应量化方案」等细节（动作细节在其它Skill中）
 - 直接改源码或以任何形式重构
 - 未经用户确认进行大规模代码仓检索
@@ -80,9 +84,11 @@ metadata:
 ### 1. 用户输入
 
 在任务开始前，你必须从用户那里获取足够的信息来执行调优流程。**用户完全不需要编写任何配置文件**，只需要通过自然语言描述量化需求。例如：
+
 > "帮我把 ./models/Llama-3-8B-Instruct 量化到 NPU，精度损失控制在 2% 以内"
 
 你要：
+
 1. 从用户的描述中提取所有必要参数
 2. 智能推导出合理的缺省参数
 
@@ -124,6 +130,10 @@ metadata:
 
 环境准备完成后，你需要执行《模型准备》中的步骤，确保模型准备就绪。
 
+模型适配阶段默认对 `quarot`、`flex_smooth_quant`、`flex_awq_ssz`、`iter_smooth` 4 项
+离群值抑制算法完成适配与门禁。processor 执行与变换前后浮点 logits 对比由模型准备中的
+离群值抑制阶段完成，而且每个算法须从同一原始浮点 checkpoint 独立执行和校验。
+
 在你确认模型准备就绪后，你需要向用户回显模型准备的结果，并获得用户的认可后才可以进入下一步。如果模型准备过程中出现任何问题，你必须根据《模型准备》中的指导，协助用户解决问题，直到模型准备就绪为止。
 
 ### 4. 量化配置调优
@@ -146,34 +156,35 @@ metadata:
 
 通过 `execute` 调用，路径相对于仓库 `skills/` 根目录（或 `get_skill` 定位 skill 根目录后拼接 `scripts/`）：
 
-| 脚本 | 用途 |
-|------|------|
-| `quantization-accuracy-tuning-orchestrator/scripts/history_clear.py` | 每轮循环开始前清空 history |
-| `quantization-accuracy-tuning-orchestrator/scripts/accuracy_lookup.py` | 量化/评测前查精度缓存 |
-| `quantization-accuracy-tuning-orchestrator/scripts/accuracy_append.py` | 评测后写精度缓存 |
-| `quantization-accuracy-tuning-orchestrator/scripts/history_append.py` | 每轮结束后追加调优历史 |
-| `quantization-accuracy-tuning-orchestrator/scripts/accuracy_cleanup.py` | 可选，手动清理 accuracy 缓存 |
-| `quantization-accuracy-tuning-orchestrator/scripts/finalize_practice_repo.py` | 调优收敛后写入 practice 仓库 |
+| 脚本                                                                          | 用途                               |
+| ----------------------------------------------------------------------------- | ---------------------------------- |
+| `quantization-accuracy-tuning-orchestrator/scripts/history_clear.py`          | 每个调优任务开始前清空一次 history |
+| `quantization-accuracy-tuning-orchestrator/scripts/accuracy_lookup.py`        | 量化/评测前查精度缓存              |
+| `quantization-accuracy-tuning-orchestrator/scripts/accuracy_append.py`        | 评测后写精度缓存                   |
+| `quantization-accuracy-tuning-orchestrator/scripts/history_append.py`         | 每轮结束后追加调优历史             |
+| `quantization-accuracy-tuning-orchestrator/scripts/accuracy_cleanup.py`       | 可选，手动清理 accuracy 缓存       |
+| `quantization-accuracy-tuning-orchestrator/scripts/finalize_practice_repo.py` | 调优收敛后写入 practice 仓库       |
 
 子步骤见对应 Skill：`tune-practice-cfg`（`msmodelslim analyze` + 校验脚本）、`quant-tuning-quantize`（`msmodelslim quant`）、`quant-tuning-evaluate`（评测脚本）；结构化回退意见见 `quantization-expert-experience-tuning-rules`（`standing_high_with_experience` 策略二分前委派）。
 
 **压缩数据集（默认）**：默认的量化调优过程均使用压缩数据集进行快速迭代。进入循环前**必须**向用户确认来源，三选一：①用户自备已压缩数据集；②委派 `aisbench-dataset-compression-herding` skill 用 RBF Kernel Herding 生成 coreset（仅支持 `aime2025`/`gpqa`，耗时约 30 分钟，已获用户确认后执行）；③用户两者都不愿意时退回全集测试。主流程采用「**子集调优 → 全集验证 → 不通过改全集调优**」：先用子集调优直到子集达标，再全集验证，全集不达标则**直接切换到全集进行调优**，保证最终与全集一致；**不再**采用固定步长逐步收紧子集出口标准的容忍性做法。进入循环前须先确定**子集与全集两个出口标准**：先询问用户是否分别给出，不给出的一方在当前环境跑浮点模型测 FP 基线（**浮点基线评测会额外占用卡数，须向用户提示并确认可用卡**）。详见 `references/quantization_tuning.md` 的「压缩数据集的使用」。
 
 **服务化推理脚本（可选加速）**：压缩数据集来源确认后、进入调优循环前，**须询问用户**是否提供了服务化推理脚本（如常驻 vLLM 服务，支持热加载模型，避免每轮服务启停）。若用户提供，则在每轮评测时优先使用服务化方式——跳过服务启停，直接 reload 模型执行评测，显著加速调优流程。用户可在以下时机提供：
+
 - 调优开始前已预启动服务，将脚本路径与服务地址告知 agent
 - 调优过程中由 agent 代为启动常驻服务（首轮启动，后续轮次 reload）
-若用户未提供或不确定，则走默认的每轮启停服务流程。详见 `references/quantization_tuning.md` 的「服务化推理脚本」。
+  若用户未提供或不确定，则走默认的每轮启停服务流程。详见 `references/quantization_tuning.md` 的「服务化推理脚本」。
 
 ## 子 Skill 路由（按 `model_family`）
 
 主 Agent 读取 `analysis_result.yaml.model_family` 字段，按下表委派到对应子 Skill：
 
-| `model_family` | 分析 | 量化 | 推理（可选） |
-|---|---|---|---|
-| `llm` | `quant-tuning-analyze-llm` | `quant-tuning-quantize-llm` | `quant-tuning-infer-llm` |
-| `vlm_text` | `quant-tuning-analyze-vlm` | `quant-tuning-quantize-vlm` | `quant-tuning-infer-vlm` |
-| `dit` | `msmodelslim-model-analysis`（统一分析：识别 `model_family=dit` + 索取 `inference_repo`，回传 `next_step: model-adapt`）→ `msmodelslim-model-adapt`（DiT 扩展节：适配器生成与四步验证） | `quant-tuning-quantize-dit`（YAML `apiversion=multimodal_sd_modelslim_v1`） | `quant-tuning-infer-dit`（MindIE-SD） |
-| `dit`（调优回路） | `quant-tuning-evaluate`（DiT 扩展节，可选 FP baseline 模式，**bash 模板**：通过 `execute` 执行，不是 `Task`） | 直接调 `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py`（整层回退）+ `quant-tuning-quantize-dit` | `quant-tuning-evaluate`（DiT 扩展节：vbench.py 批量推理产 infer_outputs）→ `quant-tuning-score-dit`（**脚本**：跑 `scripts/score.py` 做 VBench 评分，AISBench-VBench） |
+| `model_family`    | 分析                                                                                                                                                                                    | 量化                                                                                                                    | 推理（可选）                                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `llm`             | `quant-tuning-analyze-llm`                                                                                                                                                              | `quant-tuning-quantize-llm`                                                                                             | `quant-tuning-infer-llm`                                                                                                                                               |
+| `vlm_text`        | `quant-tuning-analyze-vlm`                                                                                                                                                              | `quant-tuning-quantize-vlm`                                                                                             | `quant-tuning-infer-vlm`                                                                                                                                               |
+| `dit`             | `msmodelslim-model-analysis`（统一分析：识别 `model_family=dit` + 索取 `inference_repo`，回传 `next_step: model-adapt`）→ `msmodelslim-model-adapt`（DiT 扩展节：适配器生成与四步验证） | `quant-tuning-quantize-dit`（YAML `apiversion=multimodal_sd_modelslim_v1`）                                             | `quant-tuning-infer-dit`（MindIE-SD）                                                                                                                                  |
+| `dit`（调优回路） | `quant-tuning-evaluate`（DiT 扩展节，可选 FP baseline 模式，**bash 模板**：通过 `execute` 执行，不是 `Task`）                                                                           | 直接调 `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py`（整层回退）+ `quant-tuning-quantize-dit` | `quant-tuning-evaluate`（DiT 扩展节：vbench.py 批量推理产 infer_outputs）→ `quant-tuning-score-dit`（**脚本**：跑 `scripts/score.py` 做 VBench 评分，AISBench-VBench） |
 
 约束：
 
@@ -188,12 +199,12 @@ metadata:
 
 按 `model_family=dit` 路由后，orchestrator 委派以下子 Skill（详见 [`docs/dit_tuning/`](../../../docs/dit_tuning/README.md)）：
 
-| 子 Skill / 脚本 | 输入关键字段 | 输出关键字段 | 备注 |
-|---|---|---|---|
-| `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py` | `--base-practice`, `--first-n-blocks`（或 `--block-indices`）, `--output-practice` | `appended`, `md5`, `block_container`（stdout JSON） | **直接调脚本，不走 subagent**；`first_n_blocks` 默认值从 [`quantization-expert-experience-tuning-rules/structure-family-pitfalls.md`](../../../msagent/skills/quantizer/quantization-expert-experience-tuning-rules/structure-family-pitfalls.md) §7 读取 |
-| `quant-tuning-quantize-dit` | `config_path`, `model_path`, `save_path`, `device` | `success`, `quantized_path`, `exit_code` | 复用 `quant-tuning-quantizer` 字段表（见 `quantization_tuning.md`） |
-| `quant-tuning-evaluate`（DiT 扩展节） | `INFER_REPO`, `FP_WEIGHTS`（→ `--ckpt_dir`，始终 FP）, `QUANT_WEIGHTS`（FP baseline 留空）, `OUT_DIR`, `ROUND`, `NPROC`, `VBENCH_ARGS` | envelope: `ok`, `exit_code`, `log_path`, `manifest_path` | 本 skill 不评分（仅产出视频）；详见 [`quant-tuning-evaluate/references/dit/evaluate_workflow.md`](../../quant-tuning-evaluate/references/dit/evaluate_workflow.md)。**FP baseline 模式：`QUANT_WEIGHTS` 留空**（vbench.py 的 `--ckpt_dir` 始终指 FP，量化走第二个 flag 如 Wan2.2 `--quant_dit_path`）；orchestrator 启用前必须回显预估时长（FP 比量化慢 1.5-3×） |
-| `quant-tuning-score-dit` | `infer_outputs`, `full_json_dir`, `vbench_cache_dir`, `baseline_outputs`（可选）, `score_dimensions`（可选）, `baseline_tolerance`（可选）, `round`（可选） | `scores`, `quality_score`, `semantic_score`, `overall_score`, `commands`；启用 baseline 追加 `loss_vs_baseline`, `is_satisfied` | **已实现**（AISBench-VBench）；需按 §1 触发条件启用 |
+| 子 Skill / 脚本                                                         | 输入关键字段                                                                                                                                                | 输出关键字段                                                                                                                    | 备注                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py` | `--base-practice`, `--first-n-blocks`（或 `--block-indices`）, `--output-practice`                                                                          | `appended`, `md5`, `block_container`（stdout JSON）                                                                             | **直接调脚本，不走 subagent**；`first_n_blocks` 默认值从 [`quantization-expert-experience-tuning-rules/structure-family-pitfalls.md`](../../../msagent/skills/quantizer/quantization-expert-experience-tuning-rules/structure-family-pitfalls.md) §7 读取                                                                                                        |
+| `quant-tuning-quantize-dit`                                             | `config_path`, `model_path`, `save_path`, `device`                                                                                                          | `success`, `quantized_path`, `exit_code`                                                                                        | 复用 `quant-tuning-quantizer` 字段表（见 `quantization_tuning.md`）                                                                                                                                                                                                                                                                                              |
+| `quant-tuning-evaluate`（DiT 扩展节）                                   | `INFER_REPO`, `FP_WEIGHTS`（→ `--ckpt_dir`，始终 FP）, `QUANT_WEIGHTS`（FP baseline 留空）, `OUT_DIR`, `ROUND`, `NPROC`, `VBENCH_ARGS`                      | envelope: `ok`, `exit_code`, `log_path`, `manifest_path`                                                                        | 本 skill 不评分（仅产出视频）；详见 [`quant-tuning-evaluate/references/dit/evaluate_workflow.md`](../../quant-tuning-evaluate/references/dit/evaluate_workflow.md)。**FP baseline 模式：`QUANT_WEIGHTS` 留空**（vbench.py 的 `--ckpt_dir` 始终指 FP，量化走第二个 flag 如 Wan2.2 `--quant_dit_path`）；orchestrator 启用前必须回显预估时长（FP 比量化慢 1.5-3×） |
+| `quant-tuning-score-dit`                                                | `infer_outputs`, `full_json_dir`, `vbench_cache_dir`, `baseline_outputs`（可选）, `score_dimensions`（可选）, `baseline_tolerance`（可选）, `round`（可选） | `scores`, `quality_score`, `semantic_score`, `overall_score`, `commands`；启用 baseline 追加 `loss_vs_baseline`, `is_satisfied` | **已实现**（AISBench-VBench）；需按 §1 触发条件启用                                                                                                                                                                                                                                                                                                              |
 
 完整字段表见 [`references/subagent_io_protocol.md`](references/subagent_io_protocol.md) 末尾的"DiT 调优回路字段"节。
 
@@ -219,26 +230,26 @@ metadata:
 - **禁止阅读代码仓**：禁止出于任何目的进行代码仓检索或阅读。
 - **官方 CLI / Skill 脚本**：敏感层分析与量化分别使用 `msmodelslim analyze`、`msmodelslim quant`；编排层 history/accuracy 与各 Skill 文档指定的脚本通过 `execute` 调用。禁止伪造输出或跳过 Skill 文档规定的步骤。
 - **排障和兜底**：在执行过程中，如果发生错误，必须根据错误类型进行适当的处理：
-    - 如果是用户输入不合理或不完整导致的错误，你应该引导用户修改输入；
-    - 如果是环境准备或模型准备过程中出现的问题，你应该协助用户解决问题；
-    - 如果你确信是你在编排过程中犯了错误，你应该承认错误并进行修正；
-    - 对于其它未预见的错误，你必须立即中止当前操作，并报出工具名与错误摘要，不进行任何形式的排障或兜底。
+  - 如果是用户输入不合理或不完整导致的错误，你应该引导用户修改输入；
+  - 如果是环境准备或模型准备过程中出现的问题，你应该协助用户解决问题；
+  - 如果你确信是你在编排过程中犯了错误，你应该承认错误并进行修正；
+  - 对于其它未预见的错误，你必须立即中止当前操作，并报出工具名与错误摘要，不进行任何形式的排障或兜底。
 - **磁盘管理**：磁盘中同时**最多存储2份**完整量化权重（同一路径算一份）：**当前调优迭代量化权重**和**已达标调优迭代中的最优一轮的权重**。其余无用权重需要删除来释放空间，禁止文件无限堆积。注意进行删除时**严禁**使用 `rm -rf` 命令，而应该使用 `rm -r`。
 
 ### 常见错误
 
 - **错误**：伪造 CLI/脚本成功输出，或未按 Skill 文档执行对应步骤。
-    - 原因：违反了 **官方 CLI / Skill 脚本** 原则。
-    - 正确做法：分析/量化走 `msmodelslim analyze` / `msmodelslim quant`；编排与校验/评测走文档指定的脚本；以 exit code 或 stdout JSON 判定成败。
+  - 原因：违反了 **官方 CLI / Skill 脚本** 原则。
+  - 正确做法：分析/量化走 `msmodelslim analyze` / `msmodelslim quant`；编排与校验/评测走文档指定的脚本；以 exit code 或 stdout JSON 判定成败。
 - **错误**：命令失败后换未文档化的命令续跑以规避问题。
-    - 原因：违反了 **排障和兜底** 原则。
-    - 正确做法：无法解决则立即中止，报命令名与错误摘要。
+  - 原因：违反了 **排障和兜底** 原则。
+  - 正确做法：无法解决则立即中止，报命令名与错误摘要。
 - **错误**：遇到报错后通过修改源码来规避。
-    - 原因：违反了**执行范围**约束中禁止改业务/框架源码的原则。
-    - 正确做法：遇到报错时，应通过正当途径解决，而非修改源码。
+  - 原因：违反了**执行范围**约束中禁止改业务/框架源码的原则。
+  - 正确做法：遇到报错时，应通过正当途径解决，而非修改源码。
 - **错误**：在磁盘中存储了**大于等于3份**模型权重。
-    - 原因：违反了**磁盘管理**原则。
-    - 正确做法：严格遵守磁盘管理原则，控制模型权重的存储数量。
+  - 原因：违反了**磁盘管理**原则。
+  - 正确做法：严格遵守磁盘管理原则，控制模型权重的存储数量。
 - **错误**：通过阅读代码来推断用户环境信息。
-    - 原因：违反了**禁止阅读代码仓**原则。
-    - 正确做法：应通过用户输入或明确询问来获取环境信息，不应阅读代码。
+  - 原因：违反了**禁止阅读代码仓**原则。
+  - 正确做法：应通过用户输入或明确询问来获取环境信息，不应阅读代码。
