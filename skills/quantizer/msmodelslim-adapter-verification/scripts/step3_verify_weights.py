@@ -32,10 +32,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--original-path", required=True)
     parser.add_argument("--quantized-path", required=True)
+    parser.add_argument(
+        "--reference-weights",
+        default=None,
+        help="Explicit baseline weights directory. If set, used as the left-"
+        "hand side of the comparison instead of --original-path. Useful when "
+        "step1 used --skip-random-model and the real-weight baseline lives "
+        "elsewhere on disk.",
+    )
     parser.add_argument("--tolerance", type=float, default=1e-5)
     args = parser.parse_args()
 
-    left = _load_weights(args.original_path)
+    left_path = args.reference_weights or args.original_path
+    left = _load_weights(left_path)
     right = _load_weights(args.quantized_path)
     if not left or not right:
         print("[ERROR] step3失败: 权重加载失败")

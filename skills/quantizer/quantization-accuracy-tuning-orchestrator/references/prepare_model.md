@@ -8,12 +8,14 @@
 
 ### 子代理
 
-由两个专用子代理承载模型分析与适配工作；主代理 **不要**在本会话中代替 subagent 完成分析或适配。
+由三个专用子代理承载模型分析与适配工作；主代理 **不要**在本会话中代替 subagent 完成分析或适配。
 
 | 子代理 | 功能用途 |
 |--------|----------|
-| `msmodelslim-model-analysis` | 适配前分析：实现来源解析、结构/MoE/逐层加载等风险评估 |
-| `msmodelslim-model-adapt` | 分析通过后：适配模板、注册、`config.ini` 与四步验证 |
+| `msmodelslim-model-analysis` | 适配前分析：实现来源解析、结构/MoE/逐层加载等风险评估；DiT/扩散场景下识别 `model_family=dit` 并索取 `inference_repo` |
+| `msmodelslim-model-adapt` | 模型适配与验证（统一入口）：LLM/VLM 走主流程；`model_family=dit` 走多模态生成扩展节（适配器生成 + 四步验证） |
+
+> DiT 适配细节与四步验证由 `msmodelslim-model-adapt` 的 DiT 扩展节承载（工作流见 `msmodelslim-model-adapt/references/dit/adaptation_workflow.md`），orchestrator 仅负责按 `model_family` 路由与产物串联——分析回传 `next_step: model-adapt` 后委派 `msmodelslim-model-adapt`，与 LLM/VLM 委派方式一致。
 
 ## 执行流程
 
@@ -25,9 +27,12 @@
 
 若模型未注册，委派 `msmodelslim-model-analysis` subagent。调用 `task` 时 `description` **必须**包含 MSAGENT_IO 块，字段见下文。
 
+**DiT/扩散场景特殊流程**：分析层识别为 `model_family ∈ dit` 后，会通过 `output.detection_source` 标记需要用户提供 `inference_repo`。主 Agent 收到该信号后**必须**用 `AskUserQuestion` 向用户索取推理仓绝对路径，再以 `input.inference_repo` 字段重新委派分析层（或直接以新字段继续），分析层据此写入报告。
+
 ### 3. 委派模型适配
 
-仅当分析回传 `next_step: "model-adapt"` 时，委派 `msmodelslim-model-adapt` subagent。`next_step: "dequant"` 时先走反量化 skill；`blocked` / `need_user_input` 时停止并向用户说明（细节见 `summary` 与 `report_path`）。`description` **必须**包含 MSAGENT_IO 块，字段见下文。
+- **LLM/VLM 路径**：仅当分析回传 `next_step: "model-adapt"` 时，委派 `msmodelslim-model-adapt` subagent。`next_step: "dequant"` 时先走反量化 skill；`blocked` / `need_user_input` 时停止并向用户说明（细节见 `summary` 与 `report_path`）。`description` **必须**包含 MSAGENT_IO 块，字段见下文。
+- **DiT 路径**：与 LLM/VLM 同一委派流程。分析识别为 DiT 且缺 `inference_repo` 时回传 `next_step: need_user_input`，主 Agent 用 `AskUserQuestion` 取得推理仓路径后，**再次委派同一 subagent** `msmodelslim-model-analysis` 并带上 `inference_repo`；分析回传 `next_step: model-adapt`（附 `model_family: dit`、`inference_repo`）后，委派 `msmodelslim-model-adapt` 并在 `input` 附 `inference_repo`，由其 DiT 扩展节完成适配器生成与四步验证。
 
 ### 4. 最终验证
 
@@ -59,10 +64,12 @@
 | `model_path` | string | ✓ | 模型权重目录 |
 | `trust_remote_code` | bool | | 默认 `true` |
 | `save_path` | string | | 工作目录；分析报告写入 `{save_path}/model_analysis_report.md` |
+| `inference_repo` | string | | DiT/扩散专用：用户提供的推理仓绝对路径。首次委派可缺省；分析层识别为扩散模型后回传 `detection_source` 暗示需要该字段，主 Agent 用 `AskUserQuestion` 取得后再次委派时必填 |
 
-回传 `output` 必填：`next_step`，`implementation_source`，`summary`，`report_path`；有 shell 执行时填 `commands`
+回传 `output` 必填：`next_step`（`model-adapt` / `dequant` / `blocked` / `need_user_input`），`implementation_source`（`transformers` / `model-local` / `diffusers` / `blocked`），`summary`，`report_path`，`commands`（有 shell 执行时）；
+DiT 路径（`model_family ∈ dit` 且 `next_step: model-adapt`）额外必填：`model_family`（`dit`），`inference_repo`（用户提供的绝对路径）
 
-委派模板：
+委派模板（LLM/VLM 用）：
 
 ````markdown
 ```msagent-io v1
@@ -79,6 +86,24 @@
 ```
 ````
 
+委派模板（DiT 二次委派，带 `inference_repo`）：
+
+````markdown
+```msagent-io v1
+{
+  "protocol": "msagent.subagent_io",
+  "subagent_type": "msmodelslim-model-analysis",
+  "input": {
+    "model_type": "Wan2.2-T2V-A14B",
+    "model_path": "/data/models/Wan2.2-T2V-A14B/",
+    "trust_remote_code": true,
+    "save_path": "/path/to/workdir/",
+    "inference_repo": "/path/to/wan2_2_inference_repo/"
+  }
+}
+```
+````
+
 ### Agent: msmodelslim-model-adapt
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -88,10 +113,12 @@
 | `trust_remote_code` | bool | | 默认 `true` |
 | `analysis_report_path` | string | ✓ | 步骤 2 产出的分析报告路径 |
 | `save_path` | string | | 适配工作目录 |
+| `inference_repo` | string | | DiT/扩散专用：推理仓绝对路径（取自分析回传的 `output.inference_repo`）；LLM/VLM 不需要 |
 
-回传 `output` 必填：`adapter_registered`，`verification_steps`（四步全 `passed: true` 即通过），`artifact_paths`（可选），`commands`（须含 `install` 与 `verification_step1`～`verification_step4`）
+回传 `output` 必填：`adapter_registered`，`verification_steps`（四步全 `passed: true` 即通过），`artifact_paths`（可选），`commands`（须含 `install` 与 `verification_step1`～`verification_step4`）；
+DiT 路径（`model_family ∈ dit`）额外必填：`model_family`（`dit`），`inference_repo`，`artifact_paths`（含 `adapter_py` / `config_ini`）
 
-委派模板：
+委派模板（LLM/VLM 用）：
 
 ````markdown
 ```msagent-io v1
@@ -108,3 +135,27 @@
 }
 ```
 ````
+
+委派模板（DiT 用，附 `inference_repo`）：
+
+````markdown
+```msagent-io v1
+{
+  "protocol": "msagent.subagent_io",
+  "subagent_type": "msmodelslim-model-adapt",
+  "input": {
+    "model_type": "Wan2.2-T2V-A14B",
+    "model_path": "/data/models/Wan2.2-T2V-A14B/",
+    "trust_remote_code": true,
+    "analysis_report_path": "/path/to/workdir/model_analysis_report.md",
+    "save_path": "/path/to/workdir/",
+    "inference_repo": "/path/to/wan2_2_inference_repo/"
+  }
+}
+```
+````
+
+### 关于原 quant-tuning-analyze-dit
+
+DiT 分析已并入 `msmodelslim-model-analysis`（统一分析），DiT 适配器生成与四步验证由 `msmodelslim-model-adapt` 的 DiT 扩展节承接——两个阶段均通过上文两个 Agent 节的字段契约委派，无需独立 subagent。
+

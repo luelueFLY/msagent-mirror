@@ -1,0 +1,40 @@
+# DiT 全模型 W8A8 动态量化模板（apiversion: multimodal_sd_modelslim_v1）
+#
+# step4 用：真量化全部 linear 层。
+# 与 fallback_config.yaml 唯一差别：exclude: []。
+# DiT 不提供 w8a8_static 模板——阶段方案固定 dynamic。
+# 三条硬约束、inference_config 填写详见同目录 README.md。
+# 占位符 _CALIB_DATASET_ 需替换；inference_config 不能留 {}。
+
+apiversion: multimodal_sd_modelslim_v1
+
+spec:
+  dataset: "_CALIB_DATASET_"
+
+  process:
+    - type: "linear_quant"
+      qconfig:
+        act:
+          scope: "per_token"
+          dtype: "int8"
+          symmetric: True
+          method: "minmax"
+        weight:
+          scope: "per_channel"
+          dtype: "int8"
+          symmetric: True
+          method: "minmax"
+      include: ["*"]              # 全模型量化
+      exclude: []                 # 不回退；按目标模型需要可补充排除（如 HunyuanVideo 主仓 "*mod*"）
+
+  save:
+    - type: "mindie_format_saver"
+      part_file_size: 0
+
+  multimodal_sd_config:
+    dump_config:
+      enable_dump: false           # DiT data-free 不 dump 校准数据（短路 prepare_calib_data）；true 仅在确需浮点推理 dump 时显式开启
+      capture_mode: "args"
+      dump_data_dir: ""
+
+    inference_config: {}          # 必须按目标推理仓补齐，详见 README.md

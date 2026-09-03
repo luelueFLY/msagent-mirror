@@ -5,16 +5,24 @@
 ## 1）实现来源
 
 - [ ] 读取 `config.json`
-- [ ] 仅解析一种来源：
-  - [ ] `transformers/models/<model_type>/modeling_<model_type>.py`
-  - [ ] 通过 `auto_map` 定位模型目录内 `modeling_*.py`
-- [ ] 若无法解析，停止并要求用户提供实现代码
+- [ ] 按以下优先级解析实现来源（命中其一即可）：
+  - [ ] `transformers/models/<model_type>/modeling_<model_type>.py` → `transformers`
+  - [ ] 通过 `auto_map` 定位模型目录内 `modeling_*.py` → `model-local`
+  - [ ] 模型目录或一级子目录下 `*.json` 含 `_diffusers_version` 字段 → `diffusers`（DiT 扩散）
+- [ ] 若以上路径均未命中，停止并要求用户提供实现代码
+- [ ] DiT 路径下：必须由用户额外提供**推理仓路径**（与权重目录分离），仅做"路径存在且为目录"校验
 
 ## 2）模型类型、结构差异与连接关系（相对常见 Qwen2）
 
-- [ ] 判定模型类型：纯 LLM / 多模态理解模型 / 多模态生成模型
+- [ ] 判定模型类型：纯 LLM / 多模态理解模型 / DiT 扩散
 - [ ] 若为多模态理解模型，确认仅分析文本主干范围
-- [ ] 若为多模态生成模型，标记为不支持并停止后续适配分析
+- [ ] 若为 DiT 扩散，记录以下字段：
+  - [ ] `model_family`（`dit`）
+  - [ ] `inference_repo`（用户提供的绝对路径）
+  - [ ] `apiversion`：固定 `multimodal_sd_modelslim_v1`
+  - [ ] `quant_service`：固定 `MultimodalSDModelslimV1QuantService`
+  - [ ] 条件注入路径、时间步嵌入位置、attention 类型清单
+  - [ ] 双专家结构（是/否）
 - [ ] 记录相对常见 Qwen2 的特殊结构设计及可能影响
 - [ ] 记录特殊结构连接关系（接入位置、前后依赖、串联/并联/残差）及其对遍历/forward 的影响
 

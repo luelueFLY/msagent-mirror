@@ -1,0 +1,46 @@
+# DiT 全模型 W8A8 MXFP8 量化模板（apiversion: multimodal_sd_modelslim_v1）
+#
+# step4 用：mxfp8 格式全模型量化。Wan2.2-T2V-A14B 实测配置（MindIE-SD × Ascend_950/Atlas_350）。
+# 与 w8a8_dynamic_full_model.yaml 关键差异：
+#   - dtype: mxfp8（per_block 浮点），act/weight scope 均为 per_block
+#   - weight method: mse_round（act 仍用 minmax）
+# 三条硬约束、inference_config 填写详见同目录 README.md。
+# 占位符 _CALIB_DATASET_ 需替换；inference_config 按目标模型/任务调整字段。
+
+apiversion: multimodal_sd_modelslim_v1
+
+spec:
+  dataset: "_CALIB_DATASET_"
+
+  process:
+    - type: "linear_quant"
+      qconfig:
+        act:
+          scope: "per_block"            # mxfp8 → per_block（int8 才用 per_token）
+          dtype: "mxfp8"
+          symmetric: True
+          method: "minmax"
+        weight:
+          scope: "per_block"            # mxfp8 → per_block（int8 才用 per_channel）
+          dtype: "mxfp8"
+          symmetric: True
+          method: "mse_round"
+      include: ["*"]                    # 全模型量化
+      exclude: []                       # 不回退
+
+  save:
+    - type: "mindie_format_saver"
+      part_file_size: 0
+
+  multimodal_sd_config:
+    dump_config:
+      enable_dump: False                # MXFP8 是 data-free，无需 dump 校准统计量；保持显式声明
+      capture_mode: "args"
+      dump_data_dir: ""
+
+    inference_config:                   # 必须按目标推理仓补齐；以下为 Wan2.2-T2V-A14B 示例
+      size: "1280*720"
+      frame_num: 81
+      sample_steps: 40
+      convert_model_dtype: True
+      task: "t2v-A14B"

@@ -1,9 +1,9 @@
-﻿---
+---
 name: quant-tuning-evaluate
-description: 执行模型测评。通过 scripts/run_evaluation.py 依据 Evaluation YAML 对量化模型进行评测。
+description: 执行模型测评（统一入口）。LLM/VLM 走主流程 scripts/run_evaluation.py + Evaluation YAML；model_family=dit 走 DiT 扩展节（references/dit/evaluate_workflow.md，vbench.py 批量推理产出视频）。
 license: Apache-2.0
 metadata:
-  version: 0.3.1
+  version: 0.3.2
   domain: quantization
   framework: msmodelslim
   protocol: script
@@ -11,15 +11,23 @@ metadata:
   aliases:
     - evaluator
     - evaluation-run
+    - dit-evaluate
+    - dit-batch-infer
   trigger_intents:
     - 执行测评
     - 运行 run_evaluation
     - 评测模型
+    - DiT 批量推理
+    - 跑 VBench 视频
   keywords:
     - run_evaluation
     - evaluate
     - aisbench
     - service_oriented
+    - vbench
+    - vbench.py
+    - torchrun
+    - batch-inference
 ---
 
 # Skill: Quant Tuning Evaluate
@@ -33,7 +41,14 @@ metadata:
 - 不执行量化 → 见 `quant-tuning-quantizer` Agent
 - 不做策略决策 → 见 `quantization-accuracy-tuning-orchestrator` Skill
 
-**执行主体**：`scripts/run_evaluation.py`
+**执行主体**：`scripts/run_evaluation.py`（LLM/VLM 主流程；DiT 路径执行主体为 [references/dit/evaluate_workflow.md](references/dit/evaluate_workflow.md) §3 bash 模板）
+
+## 按 model_family 分发
+
+orchestrator 委派本 skill 时按分析结论的 `model_family` 分发：
+
+- `llm` / `vlm_text`：走本文主流程（Evaluation YAML + `run_evaluation.py` 服务化评测，产出结构化分数）
+- `dit`：**不进入主流程**，走 DiT 扩展节 → [references/dit/evaluate_workflow.md](references/dit/evaluate_workflow.md)（读推理仓 README 拼 vbench.py argv，批量推理产出视频 + `run_manifest.json`，不评分；评分由 `quant-tuning-score-dit` 接力）
 
 ---
 

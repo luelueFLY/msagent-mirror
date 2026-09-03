@@ -10,12 +10,19 @@
 
 | subagent | 职责 | 字段定义 |
 |----------|------|----------|
-| `msmodelslim-model-analysis` | 适配前模型分析 | [prepare_model.md](./prepare_model.md) |
-| `msmodelslim-model-adapt` | 模型适配与验证 | [prepare_model.md](./prepare_model.md) |
+| `msmodelslim-model-analysis` | 适配前模型分析（统一分析；DiT 识别 + 索取 `inference_repo`，回传 `next_step: model-adapt`） | [prepare_model.md](./prepare_model.md) |
+| `msmodelslim-model-adapt` | 模型适配与验证（统一入口：LLM/VLM 主流程 + DiT 多模态生成扩展节） | [prepare_model.md](./prepare_model.md) |
+| `quant-tuning-quantize-dit` | DiT W8A8 动态量化执行 | [quantization_tuning.md](./quantization_tuning.md) |
+| `quant-tuning-infer-dit` | DiT 量化后推理验证（可选） | [quantization_tuning.md](./quantization_tuning.md) |
 | `quant-tuning-evaluation-generator` | 生成测评配置 | [quantization_tuning.md](./quantization_tuning.md) |
 | `quant-tuning-practice-generator` | 生成 Practice 配置 | [quantization_tuning.md](./quantization_tuning.md) |
 | `quant-tuning-quantizer` | 执行量化 | [quantization_tuning.md](./quantization_tuning.md) |
-| `quant-tuning-evaluator` | 执行精度评测 | [quantization_tuning.md](./quantization_tuning.md) |
+| `quant-tuning-evaluator` | 执行精度评测（统一入口：LLM/VLM 主流程 + DiT 扩展节） | [quantization_tuning.md](./quantization_tuning.md) |
+| `quant-tuning-score-dit` | DiT 评分（AISBench-VBench） | 本文件 §DiT 调优回路字段 |
+
+> **DiT Practice YAML 修改** 不走 subagent，由 orchestrator 直接调
+> `quantization-expert-experience-tuning-rules/scripts/apply_rollback.py`（整层回退，单一数字输入）。
+> 详见 [`structure-family-pitfalls.md` §7](../../../quantization-expert-experience-tuning-rules/structure-family-pitfalls.md) 与 orchestrator SKILL.md §DiT 调优回路。
 
 ## 职责边界
 
@@ -126,6 +133,62 @@
 | 回传同时含 `output` 与 `error`，或 `status` 与内容不匹配 | 信封字段冲突 |
 
 quant-tuning 四类完整示例见 `quantization_tuning.md` 各 subagent 小节；msmodelslim 两类见 `prepare_model.md`。
+
+## DiT 调优回路字段
+
+> 本节定义 DiT 调优回路新增的 4 个 subagent 的 `input`/`output` 字段。
+> 与 LLM/VLM 路径字段**不重叠**——避免主 agent 误用 LLM 模板。
+
+### 共同约定
+
+| 项 | 值 |
+|---|---|
+| 入口 | `subagent_type ∈ {"quant-tuning-evaluate", "quant-tuning-score-dit"}`（evaluate 为统一入口，DiT 走其扩展节） |
+| 输入路径 | 由 orchestrator 在 `user_input` 阶段从用户收集；`--device` 仅字面量 `npu` / `cuda` / `cpu` |
+| 输出路径 | `{workdir}/round_{N}/quantized/`、`{workdir}/infer_outputs/round_{N}/`、`{workdir}/baseline_outputs/` 等约定目录 |
+| 评分 | DiT 扩展节的 `score` 字段保持 `null`（不评分）；真实评分由 `quant-tuning-score-dit` 跑出 `scores` / `overall_score` / `loss_vs_baseline` / `is_satisfied` |
+
+### Agent: quant-tuning-quantize-dit（既有 + DiT 调优复用）
+
+> 字段表见既有 `quantization_tuning.md` §Agent: quant-tuning-quantizer；DiT 调优复用时仅 `config_path` 取自 `apply_rollback.py` 的 `--output-practice`。
+
+### Agent: quant-tuning-evaluate（DiT 扩展节）
+
+> 执行细节（bash 模板、ALGO 决策、FSDP 约束、心跳机制）见 [`quant-tuning-evaluate/references/dit/evaluate_workflow.md`](../../../quant-tuning-evaluate/references/dit/evaluate_workflow.md)；量化 flag 名**不查任何 preset 表**，agent 直接读 `<inference_repo>/README.md` 确认（Wan2.2 → `--quant_dit_path`）。
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `INFER_REPO` | string | ✅ | 推理仓绝对路径（须自带 `vbench.py`） |
+| `FP_WEIGHTS` | string | ✅ | FP base model 目录（→ `--ckpt_dir`，**始终必填，量化/FP baseline 都用**） |
+| `QUANT_WEIGHTS` | string | ⛏️ | 量化产物目录（→ 量化 flag 如 `--quant_dit_path`；FP baseline 时不填） |
+| `OUT_DIR` | string | ✅ | 量化推理 → `{workdir}/infer_outputs/round_{N}/`；**FP baseline → `{workdir}/baseline_outputs/`** |
+| `ROUND` | int | ✅ | orchestrator 轮次 |
+| `NPROC` | int | ✅ | torchrun 卡数（= `cfg_size × ulysses_size`，≤ 可见 GPU 数） |
+| `VBENCH_ARGS` | string[] | ✅ | vbench.py argv（agent 按推理仓 README 自拼，含 `--ckpt_dir $FP_WEIGHTS`） |
+| `device` | string | | 默认 `npu`；卡号通过 `ASCEND_RT_VISIBLE_DEVICES` |
+
+回传 `output` 必填：`ok`, `exit_code`（校验失败 = `2`，stderr 附 `VBENCH_ARGS_INVALID`）, `log_path`（`vbench_runner.log`）, `manifest_path`（`run_manifest.json`）；不评分（评分由 `quant-tuning-score-dit` 接力）。**无硬超时**：模板以 60s heartbeat 汇报存活，orchestrator 不得按固定 timeout 误杀。
+
+**FP baseline 模式**：`QUANT_WEIGHTS` 留空，输出写到 `{workdir}/baseline_outputs/`。orchestrator 启用前必须回显预估时长（FP 比量化慢 1.5-3×）。
+**关键约定**：`--ckpt_dir` 始终指向 FP base model；vbench.py 内部 T5/VAE 等子模块也按 FP 加载；量化推理**同时**要传 FP + 量化两个路径（量化 flag 名按推理仓）。
+
+### Agent: quant-tuning-score-dit
+
+> 执行细节（缓存检查、用户确认、NPU 卡号拼接）见 [`quant-tuning-score-dit/SKILL.md`](../../quant-tuning-score-dit/SKILL.md)；本节只列字段。
+
+| 字段 | 类型 | 必填 | CLI flag | 说明 |
+|---|---|---|---|---|
+| `infer_outputs` | string | ✅ | `--infer-outputs` | `{workdir}/infer_outputs/round_{N}/`（evaluate DiT 扩展节产出） |
+| `full_json_dir` | string | ✅ | `--full-json-dir` | VBench `kmeans_info*.json` 目录 |
+| `vbench_cache_dir` | string | ✅ | `--vbench-cache-dir` | 预填充的 VBench cache |
+| `baseline_outputs` | string | ⛏️ | `--baseline-outputs` | `{workdir}/baseline_outputs/`（启用 FP 对比时） |
+| `score_dimensions` | string[] | ⛏️ | `--score-dimensions` | 维度子集，缺省全维度 |
+| `baseline_tolerance` | float | ⛏️ | `--baseline-tolerance` | 默认 `0.05`；`is_satisfied ⇔ loss_vs_baseline ≥ -tolerance` |
+| `round` | int | ⛏️ | `--round` | orchestrator 轮次 |
+
+回传 `output` 必填：`ok`, `scores`（每维度）, `score_dimensions`, `quality_score`, `semantic_score`, `overall_score`, `commands`, `duration_sec`；启用 `--baseline-outputs` 时追加 `loss_vs_baseline`, `is_satisfied`（orchestrator 调优回路的退出信号）
+
+> 评分字段经 `quant-tuning-history-append-dit` 透传到 `history.yaml.dit_records[]`；当前仅实现 `vbench` 评分器（无 `scorer` 参数，后续扩展 `image_reward` / `clip_score` 时再加）。
 
 ## 回传检查（主 Agent）
 

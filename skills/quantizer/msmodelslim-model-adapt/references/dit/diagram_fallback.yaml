@@ -1,0 +1,87 @@
+# 通用多模态生成（DiT/扩散）量化 YAML — 步 2 fallback（adapter 骨架验证用）
+#
+# 适用：msmodelslim-adapter-verification 步 2 全回退量化。
+# 不针对具体模型（不写死 Wan2.2 / HunyuanVideo 字段名）。
+# 真实模型量化时由 subagent 按 inference_repo 的 parse_args 调整 inference_config 字段。
+#
+# 关键约定（与具体模型无关）：
+#   - apiversion 固定 multimodal_sd_modelslim_v1（与 LLM/VLM 的 modelslim_v1 区分）；
+#   - 走 MultimodalSDModelslimV1QuantService + MultimodalPipelineInterface 重构路径；
+#   - "data-free" W8A8 全动态量化 = 显式写 spec.dataset（推荐正确短名）+
+#     dump_config.enable_dump: false（短路 prepare_calib_data，不走 inference_dump）；
+#     fallback 阶段不消费 inference_dump_calib_data；
+#   - inference_config 字段名 = 目标推理仓 parse_args 的 --key（任何具体模型按需改）；
+#   - 顶层除 apiversion / metadata / spec 外禁止额外字段；
+#   - 双专家 / 多专家 expert key（如 low_noise_model / high_noise_model）须与
+#     init_model() 返回 dict key 完全一致。
+
+apiversion: multimodal_sd_modelslim_v1
+
+metadata:
+  config_id: <model_id>_w8a8_fallback            # 例：wan2_2_t2v_a14b_w8a8_fallback
+  score: 0.5                                       # fallback 阶段无精度评估
+  verified_model_types:
+    - <registered_model_type>                      # 例：Wan2.2-T2V-A14B
+  label:
+    w_bit: 8
+    a_bit: 8
+    is_sparse: false
+    kv_cache: false                                # DiT 默认 false
+    fa_quant: false                                # fallback 不启用 FA3
+
+spec:
+  process:
+    - type: "linear_quant"
+      qconfig:
+        act:
+          scope: "per_token"                       # int8 → per_token；mxfp8 → per_block
+          dtype: "int8"
+          symmetric: true
+          method: "minmax"
+        weight:
+          scope: "per_channel"                     # int8 → per_channel；mxfp8 → per_block
+          dtype: "int8"
+          symmetric: true
+          method: "minmax"
+      include:
+        - "*"
+      exclude:
+        - "*mod*"                                   # 与主仓 hunyuan_video_w8a8f8_mxfp.yaml 对齐；新模型首次 exclude 空
+      # 双专家 DiT（如 Wan2.2）：include 可加 "*.low_noise_model.*" / "*.high_noise_model.*"
+
+  # dataset 字段不写 = data-free（不要写 dataset: <name>）
+  # save_path 由 CLI --save_path 给出
+
+  save:
+    - type: "mindie_format_saver"
+      part_file_size: 0
+
+  multimodal_sd_config:
+    dump_config:
+      capture_mode: "args"
+      dump_data_dir: ""                            # 留空 = 默认 save_path
+      # W8A8 全动态量化显式 enable_dump: false（短路 prepare_calib_data，
+      # 不走 inference_dump_calib_data；spec.dataset 仍建议显式写）
+
+    inference_config:                              # 按目标 DiT parse_args 字段命名
+      # === 必填字段（按目标 DiT 调整） ===
+      # Wan2.2-T2V-A14B 字段：
+      #   size: "1280*720"
+      #   frame_num: 81
+      #   sample_steps: 40
+      #   sample_guide_scale: 7.0
+      #   base_seed: 1234
+      # HunyuanVideo 字段：
+      #   model_resolution: "720p"
+      #   video_size: [720, 1280]
+      #   infer_steps: 50
+      #   cfg_scale: 1.0
+      #   embedded_cfg_scale: 6.0
+      #   flow_shift: 7.0
+      # FLUX.1-dev 字段：
+      #   num_inference_steps: 28
+      #   guidance_scale: 3.5
+      #   height: 1024
+      #   width: 1024
+      # === 字段白名单 ===
+      # 任何字段必须命中 inference_repo parse_args 的 --key；否则 Pydantic 校验 fail-fast

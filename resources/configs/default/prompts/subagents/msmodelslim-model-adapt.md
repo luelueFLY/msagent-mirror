@@ -30,7 +30,7 @@
 |-------------------|------|
 | `install` | `bash install.sh` |
 | `verification_step1` | `step1_generate_test_model.py` |
-| `verification_step2` | `step2_run_quantization.py` |
+| `verification_step2` | LLM/VLM 走 `step2_run_quantization.py`；DiT 走 `step2_run_quantization_dit.py` |
 | `verification_step3` | `step3_verify_weights.py` |
 | `verification_step4` | `step4_verify_quant_description.py` |
 
@@ -59,7 +59,7 @@
     "commands": [
       { "name": "install", "command": "bash install.sh" },
       { "name": "verification_step1", "command": "python skills/quantizer/msmodelslim-adapter-verification/scripts/step1_generate_test_model.py ..." },
-      { "name": "verification_step2", "command": "python skills/quantizer/msmodelslim-adapter-verification/scripts/step2_run_quantization.py ..." },
+      { "name": "verification_step2", "command": "python skills/quantizer/msmodelslim-adapter-verification/scripts/step2_run_quantization.py ... (LLM/VLM) | step2_run_quantization_dit.py ... (DiT)" },
       { "name": "verification_step3", "command": "python skills/quantizer/msmodelslim-adapter-verification/scripts/step3_verify_weights.py ..." },
       { "name": "verification_step4", "command": "python skills/quantizer/msmodelslim-adapter-verification/scripts/step4_verify_quant_description.py ..." }
     ]
