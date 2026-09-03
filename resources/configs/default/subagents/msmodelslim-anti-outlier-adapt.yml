@@ -1,0 +1,17 @@
+version: __APP_VERSION__
+name: msmodelslim-anti-outlier-adapt
+description: "Validate anti-outlier algorithms after base model-adapter verification."
+prompt:
+  - prompts/subagents/msmodelslim-anti-outlier-adapt.md
+llm: default
+tools:
+  patterns:
+    - impl:*:*
+    - internal:*:*
+    - mcp:*:*
+  use_catalog: false
+  output_max_tokens: 10000
+skills:
+  patterns:
+    - default:msmodelslim-anti-outlier-adapt
+  use_catalog: false

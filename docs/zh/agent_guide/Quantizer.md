@@ -12,6 +12,7 @@
 ## 核心能力
 
 - **模型适配**：评估模型接入可行性，完成 msModelSlim 适配器开发与验证；若模型尚未注册，在调优流程的模型准备阶段触发
+- **离群值抑制适配**：基础模型适配验证通过后运行；用户未指定时默认适配 `quarot`、`flex_smooth_quant`、`flex_awq_ssz`、`iter_smooth` 4 项，使用已安装 msModelSlim API 提取逐算法 DOT 图，并从同一原始浮点模型分别独立完成 logits 门禁和人类可读汇总报告
 - **精度调优**：根据用户指定的精度约束，生成量化与评测配置，执行量化与 AISBench 评测，迭代搜索满足要求的量化方案
 
 ## 前置准备
@@ -52,7 +53,7 @@ Quantizer 按以下阶段编排（各阶段经用户确认后进入下一步）�
 
 1. **用户输入对齐**：提取并回显关键参数（模型路径、保存路径、量化方案、设备、精度需求等）
 2. **环境准备**：确认 msModelSlim 可 import、Ascend 环境变量与 NPU 卡号就绪
-3. **模型准备**：检查 `config.ini` 是否已注册目标模型；**未注册时进入模型适配子流程**（见下节），已注册则跳过
+3. **模型准备**：检查 `config.ini` 是否已注册目标模型并验证基础适配；通过后独立完成离群值抑制适配
 4. **量化配置调优**：循环执行「生成量化配置 → 量化 → 评测 → 记录历史」，直至精度达标或达到最大迭代次数
 5. **结果交付**：输出满足精度要求的量化权重、评测报告与调优历史
 
@@ -62,6 +63,7 @@ Quantizer 按以下阶段编排（各阶段经用户确认后进入下一步）�
 |--------|----------|------|
 | `msmodelslim-model-analysis` | 模型准备 | 适配前分析：实现来源、结构 / MoE / 逐层加载等风险评估 |
 | `msmodelslim-model-adapt` | 模型准备 | 分析通过后：适配模板、注册、`config.ini` 与四步验证 |
+| `msmodelslim-anti-outlier-adapt` | 模型准备 | 基础适配验证通过后：执行逐算法离群值抑制与最终 logits 门禁 |
 | `quant-tuning-evaluation-generator` | 量化配置调优 | 生成测评配置（Evaluation YAML） |
 | `quant-tuning-practice-generator` | 量化配置调优 | 生成 / 调整量化配置（Practice YAML） |
 | `quant-tuning-quantizer` | 量化配置调优 | 依据 Practice YAML 执行模型量化 |
@@ -69,7 +71,9 @@ Quantizer 按以下阶段编排（各阶段经用户确认后进入下一步）�
 
 ### 模型准备（模型适配子流程）
 
-当目标 `model_type` 尚未在 msModelSlim `config.ini` 中注册时，Agent 委派分析与适配 SubAgent，完成后继续进入量化配置调优。
+当目标 `model_type` 尚未在 msModelSlim `config.ini` 中注册时，Agent 先委派模型适配
+SubAgent。基础适配四步验证通过后，再进入独立的离群值抑制适配流程；任一前置验证失败均
+不得继续。
 
 该子流程主要完成：
 
@@ -80,6 +84,6 @@ Quantizer 按以下阶段编排（各阶段经用户确认后进入下一步）�
 
 ## 使用注意
 
-- 当前模型适配子流程主要支持 LLM 的 W8A8 等线性层量化；离群值抑制与 FA3 等复杂算法暂不支持
+- 离群值抑制阶段在用户未指定时默认适配 `quarot`、`flex_smooth_quant`、`flex_awq_ssz`、`iter_smooth` 4 项；用户指定时仅执行所选子集。每项使用重新加载的干净浮点模型独立校验，且不执行量化
 - 模型分析阶段若发现较难适配的风险点，会中断流程并提前告知；需你确认风险并同意继续后，才会进入适配与后续调优
 - 若未提供浮点 baseline 精度，Agent 会先对浮点模型执行评测获取 baseline，再进入调优循环
