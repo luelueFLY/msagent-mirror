@@ -18,6 +18,8 @@
 |------------|----------------------------------|
 | `ops-performance-tuning` | Ascend 算子性能瓶颈分析、优化建议输出、端到端性能优化   |
 | `msot-msopprof-operator-profiler` | Ascend 算子性能瓶颈分析、TOP5优化建议输出、总结报告等 |
+| `mssanitizer-basic-usage` | Ascend 算子内存、竞争、初始化、同步异常检测、分析和修复 |
+| `msdebug-basic-usage` | Ascend 算子调试和 coredump 解析 |
 
 ## Todo 使用约束
 

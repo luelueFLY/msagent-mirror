@@ -1,0 +1,184 @@
+{
+  "eval_mode": "text",
+  "evals": [
+    {
+      "id": 1,
+      "title": "msDebug 工具可用性检查",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我想用 msDebug 对昇腾 Ascend C 算子做上板调试，如何确认 msdebug 工具已安装且调试通道可用？请给出检查方法和处理指引。不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 环境检查流程：\n- 定位 msdebug：优先 which msdebug；不在 PATH 时用 $ASCEND_HOME_PATH/tools/msdebug/bin/msdebug（未 source 环境先 source ${ASCEND_HOME_PATH}/set_env.sh），或直接使用 /usr/local/Ascend/ascend-toolkit/latest/tools/msdebug/bin/msdebug\n- 检查调试通道：cat /proc/debug_switch，为 1 即已开启；为 0 且具备 root 权限则 echo 1 > /proc/debug_switch，否则提示用户以 --full 参数重装 NPU 驱动后执行\n- 若终端出现 Cannot read termcap database 提示，用 export TERMINFO=$(infocmp -D | head -n1) 消除\n- 无需驱动脚本，以上为可直接执行的 shell 命令",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 2,
+      "title": "自定义工程重编译（-g -O0）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我有个自定义 Makefile 工程的自研 Ascend C 算子，想用 msdebug 上板调试，但打断点定位不到代码行。应该如何调整编译选项后重编译？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 调试前重编译要点：\n- 调试前必须让算子带上调试信息 -g 且不优化 -O0，否则无法定位到代码行\n- 自定义 Makefile 工程：修改 COMPILER_FLAG 增加 -O0 -g（如 -xcce -O0 -g --cce-ignore-always-inline=true -std=c++17）\n- 自定义 CMake 工程：在 CMakePresets.json 将 CMAKE_BUILD_TYPE 由 Release 改为 Debug，或在 kernel 侧 CMakeLists 添加 -g -O0\n- 注意不要混入 sanitizer 检测标志；调试完成后恢复原始编译选项并重新编译",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 3,
+      "title": "官方算子库编译适配与部署",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的目标算子在官方 ops-transformer 算子库中，想用 msdebug 上板调试。如何完成 -g -O0 重编译、安装部署并获取可调试的 target？其他官方仓（ops-nn/catlass 等）做法有何不同？不需要执行任何工具调用。",
+      "expected_output": "回复应说明官方算子库的编译适配与部署流程：\n- 各仓编译标志注入机制差异较大，必须按 references/official_workflow.md 对应仓库章节执行，不能统一套用一种命令\n- ops-transformer 用 bash build.sh --pkg --ops=<算子名> --soc=<soc> --op_debug_config \"ccec_O0,ccec_g\" 重编译，target 为 build 下 test_aclnn_<算子名>（--run_example 生成）\n- ops-nn/ops-math/ops-cv 用 build.sh --bisheng_flags=ccec_g,ccec_O0；asc-devkit 用 cmake -DCMAKE_BUILD_TYPE=Debug；catlass 用 scripts/build.sh --debug（当前版本零改动）；cann-samples 需手动改 story CMakeLists 的 ASC 编译选项\n- ops 系列仓编译成功后安装 cann-ops-<仓>*linux*.run 至 ${ASCEND_HOME_PATH}/opp/vendors 并按回显设置 LD_LIBRARY_PATH；asc-devkit/catlass/cann-samples 为样例型仓库编译即产出可执行文件，无需安装\n- 编译+安装直接使用对应仓 build.sh / run 包命令完成，无脚本依赖",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 4,
+      "title": "断点调试流程（打断点/运行/打印变量）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "distractor_skills": [
+          "mssanitizer-basic-usage",
+          "ascendc-runtime-debug"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的 add_example Vector 算子在 add_kernel.cpp 第 69 行附近结果不对，想用 msdebug 在那个位置打断点并运行到断点后查看变量，应该怎么做？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 断点调试流程：\n- 用 msdebug 拉起算子：msdebug ./test_aclnn_add_example（进入 (msdebug) 会话）\n- 会话内依次执行：b add_kernel.cpp:69 打断点 → run → ascend info cores → frame variable\n- run 后 msdebug 自动切换聚焦到命中的 kernel，回显 stop reason 与源码行；p <变量名> 打印变量，LocalTensor 看 address_.bufferAddr，GlobalTensor 看 address_\n- 输出时贴相关 msdebug 回显（提示符/源码行号/变量值），末尾附简短下一步提示，并清理残留进程",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 5,
+      "title": "单步调试（步入/步过/步出）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子停在断点处了，想逐行单步执行来跟踪数据变化，如何在 msdebug 中单步跳过、步入函数内部、以及从函数步出？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 单步调试命令：\n- 单步跳过用 n（next），步入函数用 s（step），从函数返回调用处用 finish\n- 在 (msdebug) 会话内直接输入 n / s / finish 执行（msdebug 拉起后即进入交互会话）\n- 每步执行后回显当前帧源码行与行号，可配合 p/frame variable 观察变量变化",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 6,
+      "title": "变量与内存查看（UB/GM）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子调试时想查看某个 LocalTensor/GlobalTensor 里的实际数据以及全部局部变量，该如何用 msdebug 打印变量并读取 UB/GM 内存？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 变量与内存查看方法：\n- 打印变量用 p <变量名>：LocalTensor 取 address_.bufferAddr，GlobalTensor 取 address_\n- 打印全部局部变量用 frame variable（或 var）\n- 读 UB 内存：memory read -m UB -f <type>[] <bufferAddr> -s <每行字节> -c <行数> [-E <跳过元素数>]；读 GM 内存：memory read -m GM -f <type>[] <address_> ...，地址分别取自 bufferAddr 与 address_\n- 建议顺序：run → ascend info cores → frame variable，先 p <tensor名> 取地址再读内存",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 7,
+      "title": "核信息查询与核切换",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子多核并行，断点命中的是其中某个核，我想看看当前有哪些核、各自运行状态，并切到另一个 aiv 核继续查看数据，该怎么操作？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 核信息查询与切换方法：\n- 查询核信息用 ascend info cores，展示 CoreId/Type/Device/Stream/Task/Block/PC/Exception\n- 切换 Vector 核用 ascend aiv <id>，切换 Cube 核用 ascend aic <id>，id 取 ascend info cores 的 CoreId；切核后重新 p / memory read 观测该核数据\n- 通算融合算子多 Device 场景用 ascend device <id> 指定 Device\n- 需要时逐条执行 ascend info devices / cores / tasks / threads / stream / blocks 查询",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 8,
+      "title": "寄存器与 device/task/stream 信息读取",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我想在 msdebug 中查看算子的寄存器值（比如 PC 寄存器）以及 device、task、stream、block 的运行信息，该用什么命令？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug 寄存器与硬件信息查询命令：\n- 读寄存器：register read -a 读全部，re r $PC 读指定寄存器\n- 查询 device 信息：ascend info devices\n- 查询 task/stream/block 信息：ascend info tasks / ascend info stream / ascend info blocks（-d 看各核中断处代码）\n- 查询 simt 线程信息：ascend info threads / ascend thread <id> / ascend thread <(x,y,z)>（仅 simt_vf）\n- 不熟悉命令时可用 help <命令> 查看帮助",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 9,
+      "title": "coredump 分析（程序挂掉场景）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "distractor_skills": [
+          "ascendc-crash-debug",
+          "mssanitizer-basic-usage"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子程序异常退出并生成了 core 文件，想用 msdebug 定位是挂在哪行代码、调用栈是什么、现场变量值多少，该怎么做？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msDebug coredump 分析流程：\n- 用 msdebug 直接加载解析：msdebug --core <core文件> [<kernel.o 或 -g 编译的可执行文件/动态库>]，kernel.o 需 -g 编译才能展示代码行级调用栈，多 tilingKey 时传目标 tilingKey 对应的 .o\n- 会话内依次执行：ascend info summary（coredump 基本信息与 stop_reason）→ bt（调用栈）→ frame select 0（挂掉代码行源码上下文）→ frame variable / p <变量名>（现场变量）\n- bt 仅在 stop_reason 为 CUBE_ERROR/CCU_ERROR/MTE_ERROR/VEC_ERROR/FIXP_ERROR 时准确；函数名过长可先设置 frame-format\n- 输出时回显挂掉代码行 file:line、调用栈要点、关键变量值，并用 2~3 句话给出简明结论",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 10,
+      "title": "PyTorch 框架接入场景调试",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的 Ascend C 算子是接入 PyTorch 框架通过 test_ops_custom.py 调用的，想在 msdebug 中调试算子的 kernel 代码并打断点看行号，需要怎么做？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 PyTorch 场景下 msDebug 调试流程：\\n- 拉起方式：msdebug python3 test_ops_custom.py（工具自动 target create 'python3' 并设置 run-args）\\n- 前提：算子 kernel 需带 -g -O0（Debug）编译部署；kernel 以独立 .o 部署、run 时动态下发，调试器不会自动关联其调试信息\\n- 推荐方式：启动前 export LAUNCH_KERNEL_PATH=<部署目录下 kernel.o 路径>（多在 ${ASCEND_HOME_PATH}/opp/vendors/customize/.../kernel/<SOC>/<op_type>/ 下，形如 AddCustom_<hash>.o），run 前即可按行号打断点并命中\\n- 未设 LAUNCH_KERNEL_PATH 时用手动导入：官方顺序为先 run，再 image add <kernel.o> 导入调试信息、image load -f <kernel.o> -s 0 使其生效，之后设置断点\\n- 之后按标准流程单步、打印变量/读内存；断点路径需与 DWARF 行号源码路径匹配",
+      "expectations": [],
+      "files": []
+    }
+  ],
+  "skill_name": "msdebug-basic-usage"
+}
