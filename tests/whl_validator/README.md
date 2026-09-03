@@ -6,7 +6,7 @@
 
 ```bash
 cd tests/whl_validator
-```text
+```
 
 ## 1. 快速开始
 
@@ -59,7 +59,8 @@ tests/whl_validator/
 │   ├── test_02_mcp_tools.py
 │   ├── test_03_skills.py
 │   ├── test_04_sys_prompt.py
-│   └── test_05_local_env.py
+│   ├── test_05_local_env.py
+│   └── test_06_threads.py
 ├── test_fixtures/                 # 测试种子数据（每个用例复制到隔离 workspace）
 │   └── workspace_seed/
 │       ├── read_marker.txt        # 内容：MSAGENT_FILESYSTEM_VALIDATION_OK
@@ -78,6 +79,7 @@ pytest 通过 `pytest-xdist` 的 `-n auto` 按 CPU 核数并行执行。测试�
 | `test_03_skills.py` | 1. 显式快捷方式（`/op-mfu-calculator`）触发正确 Skill<br>2. 自然语言（不含 Skill 名）按语义触发同一 Skill | 需要真实 API Key |
 | `test_04_sys_prompt.py` | 1. Profiler 和 Accuracy 各自身份、Skill、工具边界不串用<br>2. 运行环境信息（工作目录、OS、Python）已注入且占位符已替换 | Mock LLM 捕获请求 payload<br>不访问真实模型 |
 | `test_05_local_env.py` | 1. `read_file` 正常读取和缺失文件错误处理<br>2. `execute` 相对路径和绝对路径执行脚本<br>3. `msprof-analyze` CLI 可用性 | Mock LLM<br>不需要 API Key<br>依赖 `test_fixtures/workspace_seed/` |
+| `test_06_threads.py` | `/threads` 能从持久化 checkpoint 中发现之前 Mock LLM 创建的会话，并展示其提示词预览 | Mock LLM<br>不需要 API Key |
 
 ## 5. 产物结构
 
