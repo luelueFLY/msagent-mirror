@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from validator_core.artifacts import create_case_artifact_dir
+from validator_core.agent_runner import remove_invalid_ca_bundle_env
 from validator_core.config import ValidationConfig, load_validation_config
 from validator_core.llm_capture_server import LlmCaptureServer, ToolCallScript
 from validator_core.msagent_runtime import MsagentRuntime
@@ -90,7 +91,7 @@ def case_artifact_dir(request, validation_run_dir: Path) -> Path:
 def test_workspace(tmp_path: Path) -> Path:
     """Copy deterministic local-tool inputs into an isolated workspace."""
     workspace = tmp_path / "workspace"
-    shutil.copytree(WORKSPACE_SEED, workspace)
+    shutil.copytree(WORKSPACE_SEED, workspace, dirs_exist_ok=True)
     script = workspace / "print_marker.sh"
     script.chmod(script.stat().st_mode | 0o111)
     return workspace
@@ -132,13 +133,16 @@ def msagent_runtime_factory(
         if workspace_seed is None:
             workspace.mkdir(parents=True)
         else:
-            shutil.copytree(workspace_seed, workspace)
+            shutil.copytree(Path(workspace_seed), workspace, dirs_exist_ok=True)
 
         scripts_dir = Path(sys.executable).parent
         extra_env = {
             "MSAGENT_HOME": str(msagent_home),
             "MSAGENT_FAKE_BACKEND": "0",
             "PATH": str(scripts_dir) + os.pathsep + os.environ.get("PATH", ""),
+            # 强制被测 CLI 使用 UTF-8，避免 Windows 代码页无法输出 Rich 符号。
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
             protocol.provider_api_key_env: resolved_api_key,
             protocol.base_url_env: resolved_base_url,
         }
@@ -153,26 +157,31 @@ def msagent_runtime_factory(
             extra_env.update(runtime_env)
         command_env = os.environ.copy()
         command_env.update(extra_env)
+        remove_invalid_ca_bundle_env(command_env)
         executable = validation_config.msagent.executable
-        if shutil.which(executable, path=extra_env["PATH"]) is None:
+        resolved_executable = shutil.which(executable, path=extra_env["PATH"])
+        if resolved_executable is None and sys.platform == "win32" and not executable.lower().endswith(".exe"):
+            resolved_executable = shutil.which(f"{executable}.exe", path=extra_env["PATH"])
+        if resolved_executable is None:
             pytest.fail(
                 f"当前 Python 环境中找不到 {executable!r}；请先安装待验证的 mindstudio-agent whl",
                 pytrace=False,
             )
 
+        config_command = [
+            resolved_executable,
+            "config",
+            "--llm-provider",
+            provider,
+            "--llm-base-url",
+            resolved_base_url,
+            "--llm-model",
+            validation_config.llm.model,
+            "-w",
+            str(workspace),
+        ]
         configured = subprocess.run(
-            [
-                executable,
-                "config",
-                "--llm-provider",
-                provider,
-                "--llm-base-url",
-                resolved_base_url,
-                "--llm-model",
-                validation_config.llm.model,
-                "-w",
-                str(workspace),
-            ],
+            config_command,
             env=command_env,
             capture_output=True,
             text=True,
@@ -181,9 +190,21 @@ def msagent_runtime_factory(
             check=False,
             timeout=validation_config.msagent.timeout_seconds,
         )
-        assert configured.returncode == 0, (
-            f"{provider} 配置失败。\nstdout:\n{configured.stdout}\nstderr:\n{configured.stderr}"
-        )
+        if configured.returncode != 0:
+            app_log_path = msagent_home / "logs" / "app.log"
+            try:
+                app_log = app_log_path.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                app_log = f"无法读取日志 {app_log_path}: {exc}"
+            pytest.fail(
+                f"{provider} 配置失败，退出码: {configured.returncode}\n"
+                f"命令: {config_command!r}\n"
+                f"MSAGENT_HOME: {msagent_home}\n"
+                f"stdout:\n{configured.stdout}\n"
+                f"stderr:\n{configured.stderr}\n"
+                f"app.log:\n{app_log}",
+                pytrace=False,
+            )
 
         runtime = MsagentRuntime(
             provider=provider,
@@ -192,7 +213,7 @@ def msagent_runtime_factory(
             msagent_home=msagent_home,
             artifact_dir=runtime_artifacts,
             extra_env=extra_env,
-            executable=executable,
+            executable=resolved_executable,
         )
         runtimes.append(runtime)
         return runtime
