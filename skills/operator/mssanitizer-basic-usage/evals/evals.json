@@ -1,0 +1,129 @@
+{
+  "eval_mode": "text",
+  "evals": [
+    {
+      "id": 1,
+      "title": "msSanitizer 工具可用性检查",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我想对昇腾 Ascend C 算子做 msSanitizer 异常检测，如何确认 mssanitizer 工具已安装且环境可用？请给出检查方法和安装指引。不需要执行任何工具调用。",
+      "expected_output": "回复应说明 msSanitizer 环境检查流程：\n- 通过 mssanitizer -v 查看工具版本，输出应包含 mssanitizer 与 msopscommon 的版本号\n- 若命令不存在或报错，说明工具未安装或环境变量未配置，应参照 msSanitizer 安装指南完成安装\n- 判断目标算子是否位于官方算子库/样例库（ops-transformer、ops-nn、catlass 等）中，选择对应检测流程",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 2,
+      "title": "内存越界与泄漏检测（memcheck）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "distractor_skills": [
+          "ascendc-crash-debug",
+          "ascendc-runtime-debug"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的 Ascend C 算子运行结果不稳定、偶尔崩溃，怀疑是 UB 缓冲区越界写入或内存泄漏，想用 mssanitizer 主动检测内存问题，应该怎么做？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 memcheck 内存检测流程：\n- 说明 memcheck 能检测的异常类型：非法读写、多核踩踏、非对齐访问、内存泄漏、非法释放、分配内存未使用\n- 编译阶段为算子添加 -g 与 --cce-enable-sanitizer（或 -sanitizer）编译选项并重新编译\n- 运行检测命令 mssanitizer --tool=memcheck -- <算子执行命令>，或使用 scripts/run_mssanitizer.py 一键运行\n- 按报告中的 ERROR/WARNING 与调用栈定位越界/泄漏的源码位置",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 3,
+      "title": "数据竞争检测（racecheck）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子多核并行时结果偶发错误，怀疑存在 RAW/WAR/WAW 数据竞争，如何用 mssanitizer 检测？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 racecheck 竞争检测流程：\n- 说明 racecheck 检测 WAW/WAR/RAW 数据竞争，覆盖核内流水间/流水内、核间、卡间（--check-cross-npu-races）\n- 添加 -g 与 --cce-enable-sanitizer 编译选项后重新编译\n- 运行 mssanitizer --tool=racecheck -- <算子执行命令>\n- 结合 hazard 告警定位竞争点并修复（如调整同步或读写顺序）",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 4,
+      "title": "未初始化读取检测（initcheck）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子输出出现脏数据，怀疑读取了未初始化的内存，如何用 mssanitizer 检测？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 initcheck 未初始化检测流程：\n- 说明 initcheck 检测读取未初始化内存导致的脏数据问题\n- 添加 -g 与 --cce-enable-sanitizer 编译选项后重新编译\n- 运行 mssanitizer --tool=initcheck -- <算子执行命令>\n- 按告警定位未初始化读取位置并补充初始化逻辑",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 5,
+      "title": "同步异常检测（synccheck）",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的算子运行时会卡死或挂起，怀疑 SetFlag/WaitFlag 未配对或同步指令异常，如何用 mssanitizer 检测？不需要执行任何工具调用。",
+      "expected_output": "回复应说明 synccheck 同步检测流程：\n- 说明 synccheck 检测 SetFlag/WaitFlag 未配对、冗余指令、算子卡死等同步异常\n- 添加 -g 与 --cce-enable-sanitizer 编译选项后重新编译\n- 运行 mssanitizer --tool=synccheck -- <算子执行命令>\n- 按告警定位未配对或冗余的同步指令并修复",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 6,
+      "title": "官方算子库与自定义算子工作流区别",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我的目标算子在官方 ops-nn 算子库中，想用 mssanitizer 检测，官方仓库和自定义算子的检测流程有什么不同？不需要执行任何工具调用。",
+      "expected_output": "回复应说明官方算子库与自定义算子的流程差异：\n- 官方算子库/样例库需按各代码仓的差异化步骤进行编译选项适配、编译部署与运行检测，统一参考 references/official_workflow.md\n- ops-nn 支持 build.sh --mssanitizer 快捷编译选项，或通过 --bisheng_flags=sanitizer,ccec_g 注入编译标志\n- 自定义算子需手动在 CMakeLists.txt 或 Makefile 中添加 -g 与 --cce-enable-sanitizer 编译/链接选项\n- 检测完成后的结果分析、报告生成与编译选项清理步骤两者一致",
+      "expectations": [],
+      "files": []
+    },
+    {
+      "id": 7,
+      "title": "一键四检与结构化报告生成",
+      "config": {
+        "max_tokens": 160000,
+        "ascend_platforms": [
+          "A2",
+          "A3",
+          "A5"
+        ],
+        "eval_mode": "text"
+      },
+      "prompt": "我想用 mssanitizer 对算子做完整的四种检测并生成结构化分析报告用于定位和修复，推荐什么样的流程？不需要执行任何工具调用。",
+      "expected_output": "回复应说明完整检测流程：\n- 使用 scripts/run_mssanitizer.py 一键依次执行 memcheck、racecheck、initcheck、synccheck 四种检测，生成带环境信息与真实命令的原始报告\n- 使用 scripts/parse_mssanitizer_report.py 将原始报告合并解析为一份结构化 .md 分析报告（环境信息、真实命令、ERROR/WARNING 汇总、按工具分组的告警列表）\n- 按 ERROR 告警逐条核对源码定位根因、排除误报、修复算子并重新编译回归检测，直至四种检测全部通过\n- 检测完成后清理临时添加的编译选项",
+      "expectations": [],
+      "files": []
+    }
+  ],
+  "skill_name": "mssanitizer-basic-usage"
+}
