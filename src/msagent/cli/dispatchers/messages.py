@@ -611,11 +611,10 @@ class MessageDispatcher:
     @classmethod
     def _format_retry_notice_text(cls, notice: RetryNotice) -> str:
         """Render a short human-friendly retry hint."""
-        delay_text = cls._format_retry_delay(notice.delay)
         if notice.scope == "tool":
             target_name = notice.target_name or "unknown"
-            return f"Tool {target_name} 重试 {notice.attempt}/{notice.max_retries}，{delay_text} 后重试"
-        return f"LLM 重试 {notice.attempt}/{notice.max_retries}，{delay_text} 后重试"
+            return f"Tool {target_name} retrying... {notice.attempt}/{notice.max_retries}"
+        return f"Model reconnecting... {notice.attempt}/{notice.max_retries}"
 
     @classmethod
     def _render_retry_notice(
@@ -628,7 +627,7 @@ class MessageDispatcher:
             return
 
         text = Text()
-        text.append("⚠︎", style="warning")
+        text.append("!", style="warning")
         text.append(" ")
         text.append(cls._format_retry_notice_text(notice), style="warning")
 

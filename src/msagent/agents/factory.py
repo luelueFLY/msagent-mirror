@@ -35,13 +35,14 @@ from deepagents.backends import CompositeBackend, LocalShellBackend
 from deepagents.backends.filesystem import FilesystemBackend
 from deepagents.middleware import MemoryMiddleware, SkillsMiddleware
 import httpx
-from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
+from langchain.agents.middleware import ToolRetryMiddleware
 from langchain.agents.middleware.types import AgentMiddleware
 
 from msagent.agents.local_context import ensure_local_context_prompt
 from msagent.configs import AgentConfig, BaseAgentConfig, RetryPolicyConfig, SubAgentConfig
 from msagent.core.constants import CONFIG_CONVERSATION_HISTORY_DIR
 from msagent.llms.factory import LLMFactory
+from msagent.middlewares.model_retry import LoggingModelRetryMiddleware
 from msagent.middlewares.tool_result_eviction import ToolResultEvictionMiddleware
 from msagent.skills.factory import DEFAULT_SKILL_CATEGORY
 from msagent.tools.catalog import (
@@ -619,7 +620,7 @@ class AgentFactory:
     def _build_model_retry_middleware(
         self,
         retry_cfg: RetryPolicyConfig | None,
-    ) -> ModelRetryMiddleware | None:
+    ) -> LoggingModelRetryMiddleware | None:
         """Build a `ModelRetryMiddleware` covering the full model call lifecycle.
 
         Unlike the SDK-level `max_retries` (which only retries before the first token),
@@ -648,7 +649,7 @@ class AgentFactory:
         }
         if retry_on is not None:
             kwargs["retry_on"] = retry_on
-        return ModelRetryMiddleware(**kwargs)
+        return LoggingModelRetryMiddleware(**kwargs)
 
     @staticmethod
     def _agent_system_prompt_text(prompt: str | list[str]) -> str:
