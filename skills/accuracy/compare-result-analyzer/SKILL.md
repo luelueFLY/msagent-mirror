@@ -1,6 +1,6 @@
 ---
 name: compare-result-analyzer
-description: "分析 msProbe compare 精度比对结果文件（CSV/XLSX），定位整网精度问题。支持统计量模式，输出分析报告。支持辅助信息协助定位：辅助信息（历史结论/已知根因/已排除算子/嫌疑区域等）建议在请求中附带（不依赖交互工具）。若请求中未附带且运行环境无 AskUserQuestion，则跳过辅助信息收集、照常完成分析，报告中省略辅助信息章节并注明原因。"
+description: "分析 msProbe compare 精度比对结果文件（CSV/XLSX），定位整网精度问题与数值差异。支持统计量模式，输出分析报告。支持辅助信息协助定位：辅助信息（历史结论/已知根因/已排除算子/嫌疑区域等）建议在请求中附带（不依赖交互工具）。若请求中未附带且运行环境无 AskUserQuestion，则跳过辅助信息收集、照常完成分析，报告中省略辅助信息章节并注明原因。"
 argument-hint: "提供待分析精度比对结果文件 (compare_result.csv|xlsx)"
 ---
 
@@ -87,7 +87,7 @@ Agent SHALL 读取每张卡的 per-card JSON，按 **`references/multi_card_rule
 - **数据质量优先检查**：查看 §7 中 shape/dtype 不一致的数量。shape 不一致分级告警：>10% 标注"关键数据异常"（warning），>50% 标注"严重数据异常——建议先修复数据结构对齐"（critical）。shape 不一致节点在传播分类中标注"NRE 可能不可信"
 - **首问题点数据质量稀释保护**：当首问题点节点**自身**的 `input→output` 签名清晰（单侧脏输入或明显引入误差）时，即使邻域存在大量 shape 不一致伪象，仍应把该首问题点作为**首要可行动结论**给出；数据质量告警降级为「局限说明」（提示其 NRE 可信度受结构错位影响，标注 "⚠️ 数据质量局限：邻域存在结构伪象，首问题点 NRE 可信度可能受结构错位影响，但其 input→output 签名清晰——仍为首要排查方向"），而非唯一结论。区分「局部结构伪象」与「首点本身仍承载真实载荷」
 - **数据覆盖缺口检查**：查看 JSON 中 `meta_errors.data_coverage_gaps`。若存在缺口（干净输出→脏输入之间无可比对节点），报告 §1 增加「数据覆盖缺口」子节
-- **Read `references/constraints.md`**
+- **Read `references/constraints.md`（重点看分析逻辑约束 C-ANALYSIS-xxx）**
 - 按执行顺序和堆栈信息定位，遵循分析逻辑约束（C-ANALYSIS-xxx）
 - 首问题点判定：C-ANALYSIS-001（不可忽略标准）+ C-ANALYSIS-002（上下游传播检查，必须经过 INPUT_PROPAGATION 和 DOWNSTREAM_ABSORBED 检查后方可确认）
 - 传播跳变分析：C-ANALYSIS-003（四种模式）+ C-ANALYSIS-014（多 input 复合优先级规则，消除 ROOT_CAUSE/PASS_THROUGH 双标签）
