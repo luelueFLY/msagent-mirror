@@ -1686,7 +1686,7 @@ dev = [
 requires-dist = [
     { name = "aiofiles", specifier = "~=25.1.0" },
     { name = "aiosqlite", specifier = "~=0.22.1" },
-    { name = "deepagents", specifier = ">=0.4.0" },
+    { name = "deepagents", specifier = ">=0.4.0,<0.6.0" },
     { name = "duckduckgo-search", specifier = ">=8.0.0,<9.0.0" },
     { name = "httpx", specifier = ">=0.28.0,<1.0.0" },
     { name = "json-repair", specifier = ">=0.54.3,<0.59.0" },
