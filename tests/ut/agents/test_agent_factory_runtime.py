@@ -18,14 +18,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from functools import partial
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from langchain_core.messages import SystemMessage
 
 import msagent.agents.factory as factory_module
+from msagent.agents.context import RetryNotice
 from msagent.agents.factory import AgentFactory, _SystemMessageMiddleware
+from msagent.middlewares.model_retry import LoggingModelRetryMiddleware
 
 
 class _DummyLLMFactory:
@@ -549,6 +554,7 @@ def test_build_model_retry_middleware_should_use_default_streaming_whitelist_whe
     middleware = factory._build_model_retry_middleware(retry_cfg)
 
     assert middleware is not None
+    assert isinstance(middleware, LoggingModelRetryMiddleware)
     assert middleware.max_retries == 4
     assert middleware.on_failure == "error"
 
@@ -935,3 +941,149 @@ async def test_agent_factory_passes_resolved_subagents_to_create_deep_agent(
     assert len(subs) == 1
     assert subs[0]["name"] == "explorer"
     assert "You explore." in str(subs[0]["system_prompt"])
+
+
+def _make_logging_retry_middleware(max_retries: int = 2) -> LoggingModelRetryMiddleware:
+    return LoggingModelRetryMiddleware(
+        max_retries=max_retries,
+        retry_on=(httpx.ReadTimeout,),
+        on_failure="error",
+        initial_delay=0.0,
+        backoff_factor=0.0,
+        jitter=False,
+    )
+
+
+def test_logging_model_retry_middleware_logs_each_retry_attempt(caplog) -> None:
+    middleware = _make_logging_retry_middleware(max_retries=2)
+    attempts: list[int] = []
+
+    def _handler(_request):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise httpx.ReadTimeout("read timed out")
+        return "ok"
+
+    with caplog.at_level(logging.WARNING, logger="msagent.middlewares.model_retry"):
+        result = middleware.wrap_model_call(object(), _handler)
+
+    assert result == "ok"
+    assert len(attempts) == 3
+
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+
+    assert len(warnings) == 2
+
+    first, second = (record.getMessage() for record in warnings)
+    assert "model call failed with ReadTimeout: read timed out; retrying 1/2 in 0.00s" == first
+    assert "model call failed with ReadTimeout: read timed out; retrying 2/2 in 0.00s" == second
+
+
+def test_logging_model_retry_middleware_logs_final_failure_when_retries_exhausted(caplog) -> None:
+    middleware = _make_logging_retry_middleware(max_retries=2)
+
+    def _handler(_request):
+        raise httpx.ReadTimeout("read timed out")
+
+    with caplog.at_level(logging.WARNING, logger="msagent.middlewares.model_retry"):
+        with pytest.raises(httpx.ReadTimeout):
+            middleware.wrap_model_call(object(), _handler)
+
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    errors = [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert len(warnings) == 2
+    assert errors == []
+
+
+def test_logging_model_retry_middleware_does_not_log_non_retryable_exception(caplog) -> None:
+    middleware = _make_logging_retry_middleware(max_retries=2)
+
+    def _handler(_request):
+        raise ValueError("bad request")
+
+    with caplog.at_level(logging.WARNING, logger="msagent.middlewares.model_retry"):
+        with pytest.raises(ValueError):
+            middleware.wrap_model_call(object(), _handler)
+
+    assert caplog.records == []
+
+
+@pytest.mark.asyncio
+async def test_logging_model_retry_middleware_awrap_model_call_logs_retries(caplog) -> None:
+    middleware = _make_logging_retry_middleware(max_retries=1)
+    attempts: list[int] = []
+
+    async def _handler(_request):
+        attempts.append(1)
+        if len(attempts) < 2:
+            raise httpx.ReadTimeout("read timed out")
+        return "ok"
+
+    with caplog.at_level(logging.WARNING, logger="msagent.middlewares.model_retry"):
+        result = await middleware.awrap_model_call(object(), _handler)
+
+    assert result == "ok"
+    assert len(attempts) == 2
+
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert warnings == ["model call failed with ReadTimeout: read timed out; retrying 1/1 in 0.00s"]
+
+
+def test_logging_model_retry_middleware_emits_retry_notice_to_runtime_context() -> None:
+    middleware = _make_logging_retry_middleware(max_retries=2)
+    notices: list[RetryNotice] = []
+
+    def _notice_handler(notice: RetryNotice) -> None:
+        notices.append(notice)
+
+    request = SimpleNamespace(
+        runtime=SimpleNamespace(context=SimpleNamespace(retry_notice_handler=_notice_handler)),
+    )
+    attempts: list[int] = []
+
+    def _handler(_request):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise httpx.ReadTimeout("read timed out")
+        return "ok"
+
+    result = middleware.wrap_model_call(request, _handler)
+
+    assert result == "ok"
+    assert len(attempts) == 3
+    assert len(notices) == 2
+
+    first = notices[0]
+    second = notices[1]
+    assert first.scope == "llm"
+    assert first.attempt == 1
+    assert first.max_retries == 2
+    assert first.delay == 0.0
+    assert first.phase == "scheduled"
+    assert second.attempt == 2
+    assert first.notice_id != second.notice_id
+
+
+@pytest.mark.asyncio
+async def test_logging_model_retry_middleware_awrap_model_call_emits_retry_notice() -> None:
+    middleware = _make_logging_retry_middleware(max_retries=1)
+    notices: list[RetryNotice] = []
+
+    async def _notice_handler(notice: RetryNotice) -> None:
+        notices.append(notice)
+
+    request = SimpleNamespace(
+        runtime=SimpleNamespace(context=SimpleNamespace(retry_notice_handler=_notice_handler)),
+    )
+
+    async def _handler(_request):
+        raise httpx.ReadTimeout("read timed out")
+
+    with pytest.raises(httpx.ReadTimeout):
+        await middleware.awrap_model_call(request, _handler)
+    await asyncio.sleep(0)
+
+    assert len(notices) == 1
+    assert notices[0].scope == "llm"
+    assert notices[0].attempt == 1
+    assert notices[0].max_retries == 1

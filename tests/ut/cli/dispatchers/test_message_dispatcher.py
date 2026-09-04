@@ -402,8 +402,8 @@ def test_format_retry_notice_text_for_llm_and_tool(tmp_path: Path) -> None:
         target_name="run_command",
     )
 
-    assert dispatcher._format_retry_notice_text(llm_notice) == "LLM 重试 2/5，5s 后重试"
-    assert dispatcher._format_retry_notice_text(tool_notice) == ("Tool run_command 重试 1/1，0.5s 后重试")
+    assert dispatcher._format_retry_notice_text(llm_notice) == "Model reconnecting... 2/5"
+    assert dispatcher._format_retry_notice_text(tool_notice) == "Tool run_command retrying... 1/1"
 
 
 def test_render_retry_notice_uses_warning_output_without_live(
@@ -435,7 +435,7 @@ def test_render_retry_notice_uses_warning_output_without_live(
         )
     )
 
-    assert printed == ["LLM 重试 1/3，2s 后重试"]
+    assert printed == ["Model reconnecting... 1/3"]
 
 
 def test_extract_tool_call_previews_merges_same_tool_with_conflicting_source_ids(
