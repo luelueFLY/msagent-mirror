@@ -20,9 +20,7 @@ jobs:
           python-version: "3.11"
 
       - name: Build WHL
-        run: |
-          # 根目录 build.py 会遮蔽第三方 build 模块，改由 pip 调用 Hatchling 构建后端。
-          python -m pip wheel --no-deps --wheel-dir dist .
+        run: bash scripts/build_whl.sh
 
       # 将出包产物提供给后续矩阵验证 job。
       - name: Upload WHL artifact
