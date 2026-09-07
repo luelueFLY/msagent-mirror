@@ -23,6 +23,11 @@ sync_project_version() {
   local python_bin="$1"
   local sync_script="${REPO_ROOT}/scripts/sync_version.py"
 
+  if ! "${python_bin}" -c 'from packaging.version import Version' >/dev/null 2>&1; then
+    log "Installing packaging required to validate the package version..."
+    "${python_bin}" -m pip install --disable-pip-version-check --no-input "packaging>=24"
+  fi
+
   log "Syncing package version from WHL_VERSION env or version.info..."
   "${python_bin}" "${sync_script}"
 }
@@ -270,9 +275,10 @@ build_wheel() {
     return
   fi
 
-  log "uv not found, falling back to python -m build..."
-  "${python_bin}" -m pip install --upgrade build
-  "${python_bin}" -m build --wheel --outdir "${DIST_DIR}" "${REPO_ROOT}"
+  # A repository-root build.py shadows the third-party build module when
+  # invoked as `python -m build`. pip does not have that import ambiguity.
+  log "uv not found, falling back to pip wheel..."
+  "${python_bin}" -m pip wheel --no-deps --wheel-dir "${DIST_DIR}" "${REPO_ROOT}"
 }
 
 configure_build_flags() {

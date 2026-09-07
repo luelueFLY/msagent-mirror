@@ -191,7 +191,7 @@ def test_localshell_execution_absolute_path(
     _, tool_result = assert_tool_invoked(
         result,
         "execute",
-        input_matches=lambda tool_input: script_path.as_posix() in str(tool_input.get("command") or ""),
+        input_matches=lambda tool_input: str(script_path) in str(tool_input.get("command") or ""),
     )
     output, content = _tool_output(tool_result, "execute")
     assert output.get("is_error") is False, f"execute 执行失败: {output!r}"

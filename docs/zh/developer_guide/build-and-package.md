@@ -4,7 +4,7 @@
 
 ## 推荐方式
 
-按照《[msAgent 安装指南 — 源码安装](../getting_started/install_guide.md#32-源码安装)》章节完成编译和测试环境的搭建。
+按照《[msAgent 安装指南 — 源码安装](../getting_started/install_guide.md#33-源码安装)》章节完成编译和测试环境的搭建。
 
 > **说明：** 环境镜像的构建方法及配套软件版本由 MindStudio 统一镜像制作指南维护，本仓库不重复定义。
 
@@ -36,7 +36,7 @@ pip install artifacts/mindstudio_agent-<version>-py3-none-any.whl
 3. 将 `dist/` 中的 whl 复制到 `artifacts/`
 4. 测试模式调用 `scripts/run_ut.sh`，由其中的 `uv run` 自动准备测试依赖
 
-`scripts/build_whl.sh` 仍可单独使用，适合需要直接控制其环境变量的场景。它会先校验 `uv.lock`，不一致时在当前工作区自动执行 `uv lock` 更新，再使用 `uv build`；在没有 `uv` 时回退到 `python -m build`。
+`scripts/build_whl.sh` 仍可单独使用，适合需要直接控制其环境变量的场景。它会先校验 `uv.lock`，不一致时在当前工作区自动执行 `uv lock` 更新，再使用 `uv build`；在没有 `uv` 时回退到 `pip wheel`。
 
 ## 常用构建参数
 
