@@ -1,6 +1,6 @@
 ---
 name: train-infer-op-diff-scanner
-description: RL 强化学习训练与推理（rollout）路径的算子差异性扫描。当用户提供训练启动脚本路径，要求对比 Megatron 训练路径与 vLLM 推理路径的算子差异（尤其是融合算子 vs 单算子不一致）时使用此 skill。典型触发词包括"训推算子扫描"、"训推差异性"、"算子差异报告"、"融合算子对比"、"train vs infer op diff"。注意：本 skill 通过运行完整 RL 训练脚本（集成 profiling）来采集真实运行时算子（非静态源码扫描，非独立分离运行）。
+description: RL 强化学习训练与推理（rollout）路径的算子差异性扫描。当用户提供训练启动脚本路径，要求对比 Megatron 训练路径与 vLLM 推理路径的算子差异（尤其是融合算子 vs 单算子不一致）时使用此 skill。典型触发词包括"训推算子扫描"、"训推差异性"、"算子差异报告"、"融合算子对比"、"train vs infer op diff"。注意：本 skill 通过运行完整 RL 训练脚本（集成 profiling）来采集真实运行时算子（非静态源码扫描，非独立分离运行）。当训练、推理使用不同脚本时禁止触发。
 ---
 
 # Train-Infer Operator Diff Scanner（RL 训推算子一致性扫描 ）
