@@ -3,7 +3,7 @@ name: spike-root-cause-analysis
 description: >
   分布式训练梯度尖刺 (Gradient Spike) 根因定位。基于梯度监控数据 (trend.db/CSV)、
   msprobe dump 统计数据，三阶段渐进式从异常坐标定位逐层深入到算子级根因。
-  当用户提供 spike/梯度尖刺/梯度异常相关数据时使用此 skill。
+  当用户明确指明分析梯度尖刺问题时使用此 skill。 即便用户提供以上数据，但未指明分析梯度尖刺问题时，不可使用此skill。
 keywords: [spike, 梯度尖刺, gradient spike, 梯度异常, 根因定位, root cause, dump_statistic,
   trend.db, parameters_grad, 参数梯度, 前反向, 激活追溯]
 ---
