@@ -64,6 +64,7 @@ irm https://raw.gitcode.com/Ascend/msagent/raw/master/scripts/install.ps1 | iex
   | [Modeling](../agent_guide/Modeling.md) | 仿真建模与自动寻优 | `msagent --agent Modeling` |
   | [Operator](../agent_guide/Operator.md) | 算子调优 | `msagent --agent Operator` |
   | [Minos](../agent_guide/Minos.md) | 文档辅助 | `msagent --agent Minos` |
+  | [SpecTrainer](../agent_guide/SpecTrainer.md) | 投机解码数据重采样 | `msagent --agent SpecTrainer` |
 
 - 更多命令请参见《[msAgent使用指南](../user_guide/usemap.md)》。
 
