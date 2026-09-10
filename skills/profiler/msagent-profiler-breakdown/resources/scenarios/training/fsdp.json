@@ -1,0 +1,10 @@
+{
+  "framework": "fsdp",
+  "scenario": "train",
+  "label": "FSDP 预训练（占位，继承 megatron 训练占位）",
+  "extends": "megatron",
+  "stage_decompose": {
+    "note": "FSDP 阶段/step 规则待真实数据核验后回填；当前继承 megatron 训练占位"
+  },
+  "step_decompose": {}
+}

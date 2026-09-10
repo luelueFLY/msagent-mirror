@@ -1,0 +1,16 @@
+{
+  "framework": "slime",
+  "scenario": "rl",
+  "label": "slime 强化学习（待核验）",
+  "extends": null,
+  "stage_decompose": {
+    "backing": "MSTX_EVENTS",
+    "note": "slime 阶段打点待真实数据核验后回填；当前 stages 为空时引擎输出空 children 占位（不回退推理规则）",
+    "stages": []
+  },
+  "step_decompose": {
+    "backing": "MSTX_EVENTS",
+    "anchor": [],
+    "note": "slime step 边界锚点待核验后回填"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "framework": "sglang",
+  "scenario": "inference",
+  "label": "SGLang 推理（待核验）",
+  "extends": null,
+  "stage_decompose": {
+    "backing": "PYTORCH_API",
+    "note": "SGLang 阶段 scope 待真实 profiling 数据核验后回填；当前 stages 为空时引擎回退 vllm 约定兜底（scope 名可能不适用，需人工复核）",
+    "stages": []
+  },
+  "step_decompose": {
+    "backing": "PYTORCH_API",
+    "anchor": [],
+    "note": "SGLang step 边界锚点待核验后回填（候选：forward / decode 相关 scope）"
+  }
+}
