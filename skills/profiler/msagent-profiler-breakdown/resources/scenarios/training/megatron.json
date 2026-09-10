@@ -1,0 +1,16 @@
+{
+  "framework": "megatron",
+  "scenario": "train",
+  "label": "Megatron 预训练（阶段切分占位）",
+  "extends": null,
+  "stage_decompose": {
+    "backing": "PYTORCH_API",
+    "note": "LLM 训练逐 step 均质（fwd+bwd+optimizer），阶段不区分，引擎输出空 children 占位；直接下钻 step/layer",
+    "stages": []
+  },
+  "step_decompose": {
+    "backing": "PYTORCH_API",
+    "anchor": [],
+    "note": "训练 step 边界待核验（候选：optimizer 更新 kernel / fwd-bwd 锚点，见 references/frameworks/README.md）"
+  }
+}

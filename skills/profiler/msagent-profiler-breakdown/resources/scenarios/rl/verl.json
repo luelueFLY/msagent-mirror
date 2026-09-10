@@ -1,0 +1,28 @@
+{
+  "framework": "verl",
+  "scenario": "rl",
+  "label": "verl 强化学习（PPO）",
+  "extends": null,
+  "stage_decompose": {
+    "backing": "MSTX_EVENTS",
+    "note": "verl 低开销打点落在独立 MSTX_EVENTS 表（JOIN STRING_IDS ON message，message id 为库内独立 hash，引擎运行时 JOIN 反查）；阶段名已对齐两侧视角（trainer marked_timer / worker DistProfiler.annotate）",
+    "stages": [
+      {"name": "rollout",         "scopes": ["gen", "generate_async"]},
+      {"name": "reward",          "scopes": ["reward"]},
+      {"name": "old_log_prob",    "scopes": ["old_log_prob", "actor_compute_log_prob"]},
+      {"name": "ref_log_prob",    "scopes": ["ref", "ref_compute_log_prob"]},
+      {"name": "values",          "scopes": ["values"]},
+      {"name": "adv",             "scopes": ["adv"]},
+      {"name": "update_critic",   "scopes": ["update_critic"]},
+      {"name": "update_actor",    "scopes": ["update_actor", "actor_update"]},
+      {"name": "update_weights",  "scopes": ["update_weights", "sync_rollout_weights"]},
+      {"name": "save_checkpoint", "scopes": ["save_checkpoint"]},
+      {"name": "testing",         "scopes": ["testing"]}
+    ]
+  },
+  "step_decompose": {
+    "backing": "MSTX_EVENTS",
+    "anchor": [],
+    "note": "RL 场景 step 边界待核验（候选：actor_update/update_actor 作为单次更新边界，dataloader 子粒度问题待解）；anchor 为空时引擎跳过 step 拆解"
+  }
+}

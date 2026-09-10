@@ -1,0 +1,24 @@
+{
+  "framework": "vllm",
+  "scenario": "inference",
+  "label": "vLLM / vLLM-Ascend 推理（decode 先行）",
+  "extends": null,
+  "stage_decompose": {
+    "backing": "PYTORCH_API",
+    "note": "vLLM-Ascend 无 prefill/decode scope，按顶层 repetitive scope 切五 stage，每类统计 count/累计/均值/最大/最小/首个",
+    "stages": [
+      {"name": "prepare_input", "scopes": ["prepare input"]},
+      {"name": "forward",       "scopes": ["forward"]},
+      {"name": "post_process",  "scopes": ["post process"]},
+      {"name": "sample_token",  "scopes": ["sample_token"]},
+      {"name": "draft_token",   "scopes": ["draft_token"]}
+    ]
+  },
+  "step_decompose": {
+    "backing": "PYTORCH_API",
+    "anchor": ["forward"],
+    "note": "forward scope（record_function）每次 decode forward 出现一次，为 A 策略 step 边界锚点",
+    "position_warmup": 2,
+    "warmup_factor": 3.0
+  }
+}
