@@ -43,6 +43,9 @@ MindStudio-Agent（简称 `msagent`）是面向昇腾 Ascend NPU 开发、调试
 | [**Modeling**](docs/zh/agent_guide/Modeling.md) | **【仿真建模】** 聚焦大模型（LLM/VLM）仿真建模场景，承接性能建模、单点仿真、吞吐规划、设备画像与模型接入准备类问题。 |
 | [**Operator**](docs/zh/agent_guide/Operator.md) | **【算子调优】**  聚焦 Ascend NPU 算子性能调优，包括算子性能深度分析、端到端算子性能优化，辅助提升调优效率并降低开发难度。 |
 | [**Minos**](docs/zh/agent_guide/Minos.md) | **【文档体验与代码审查】**  聚焦 README 走查、安装流程验证、Quick Start 体验、新手 onboarding、文档可用性评估，以及 GitCode PR 审查与评审意见整理。 |
+| [**SpecTrainer**](docs/zh/agent_guide/SpecTrainer.md) | **【投机解码重采样】**  聚焦投机解码训练数据的 on-policy 重采样（响应重生成），把多轮对话的 assistant 回答用 verifier 模型逐轮重生成成可直接进训练的预分词样本。 |
+
+> **SpecTrainer** 的 Skill 脚本基于开源 [speculators](https://github.com/vllm-project/speculators) 仓 **v0.6.0** 做流程编排；技能说明见 [skills/README.md](skills/README.md)。
 
 ## 🧩 Skills
 

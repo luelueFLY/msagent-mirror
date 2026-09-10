@@ -103,6 +103,14 @@ description: 技能的详细描述，说明它做什么，以及什么时候使�
 | `gitcode-code-reviewer` | 审查 GitCode PR | `review 这个 PR 并指出问题` |
 | `github-raw-fetch` | 拉取 GitHub 文件或 docs | `把这个 GitHub 文档页转成可读内容` |
 
+### 2.6 投机解码重采样 Skills
+
+> 技能的 `scripts/` 基于开源 speculators 仓（[vllm-project/speculators](https://github.com/vllm-project/speculators)）**v0.6.0** 的脚本接口做流程编排：仅做参数组装与调用，不修改上游 speculators 源码。
+
+| Skill | 作用 | 示例 prompt |
+| --- | --- | --- |
+| `speculators-response-regen` | on-policy 重采样（响应重生成）：DFX 预检→输入归一化→调用仓内 response_regeneration 用 verifier 逐轮重生成 assistant 回答，产出可直接进训练的预分词样本（每行 input_ids/loss_mask） | `对这个数据集用这个模型做重采样` |
+
 ## 3. Skill 使用
 
 当用户在对话中输入任务时，Agent 会根据 prompt 的意图自动匹配并触发相应 skill。
@@ -117,7 +125,7 @@ description: 技能的详细描述，说明它做什么，以及什么时候使�
 ![skills_browser](../docs/zh/figures/skills_browser.png)
 
 ## 4. 自定义添加 Skill
- 	 
+
 除了内置 Skill，用户进入`msagent`交互界面后，可通过 `/add-skill` 从本地路径安装自定义 Skill，满足个性化场景需求。支持指定 Skill 目录或 `SKILL.md` 文件，安装后立即生效。
 
 | 命令 | 说明 |
