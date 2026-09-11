@@ -1,0 +1,26 @@
+version: __APP_VERSION__
+name: ascend-knowledge
+description: "查找并核验 Ascend 官方文档、社区知识、示例与开源仓库资料（全部经 ascend-doc-mcp 通道），返回带证据等级的知识结论。"
+prompt:
+  - prompts/subagents/ascend-knowledge.md
+llm: default
+tools:
+  patterns:
+    - mcp:ascend-doc-mcp:*
+  use_catalog: false
+  execution_timeout_seconds: 45
+  output_max_tokens: 10000
+retry:
+  enabled: true
+  model:
+    enabled: true
+    max_retries: 3
+    timeout: null
+  tool:
+    # 参数校验类错误是确定性的：原样重试只会反复浪费超时。
+    # 失败应直接返回给模型，由模型按校验错误修正参数后最多再调一次。
+    enabled: false
+    max_retries: 0
+skills:
+  patterns: []
+  use_catalog: false

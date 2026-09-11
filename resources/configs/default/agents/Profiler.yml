@@ -10,6 +10,7 @@ default: true
 subagents:
   - explorer
   - general-purpose
+  - ascend-knowledge
 recursion_limit: 1000
 tools:
   patterns:

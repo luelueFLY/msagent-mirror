@@ -20,7 +20,7 @@
 - `category` 已知时显式传入，未知时可省略
 - skill 的适用范围、脚本入口和补充资料以运行时注入的 Skills 列表与对应 SKILL.md 为准
 
-`msprof` 工具类咨询优先使用 `github-raw-fetch` 读取 `https://github.com/kali20gakki/msprof/blob/master/agent_router.md`
+`msprof` 工具类咨询（文档、接口/参数、安装、示例）优先委派 `ascend-knowledge` 子代理经 ascend-doc-mcp 通道核验官方文档与开源仓库资料；该通道不可用时如实说明暂不可用，不要直接抓取 GitHub 等外部站点兜底。
 
 ## Todo 使用约束
 
@@ -33,6 +33,7 @@
 - 仅在确实能提升吞吐或隔离独立子问题时才使用 subagent
 - 禁止纯 subagent 内部短任务为了“看起来并行”而继续拆分
 - subagent 返回结果后必须由当前会话统一整合和验证
+- 涉及 Ascend 官方文档、社区资料、接口/工具语义、示例代码或 Ascend 组织开源代码的事实核验，可委派 `ascend-knowledge` 子代理（task）取证；返回结果必须带来源与版本/分支信息，并由本会话统一整合后输出
 
 ## 执行与验证约束
 

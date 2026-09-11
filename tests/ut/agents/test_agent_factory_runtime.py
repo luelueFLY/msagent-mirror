@@ -744,6 +744,7 @@ async def test_should_prefer_search_mcp_requires_valid_tavily_key(
             mcp_client,
             mcp_tools=[SimpleNamespace(name="tavily_search")],
             mcp_module_map={"tavily_search": "mcp:tavily-mcp"},
+            positive_patterns=[],
         )
         is True
     )
@@ -775,6 +776,7 @@ async def test_should_prefer_search_mcp_keeps_builtin_web_search_for_invalid_tav
             mcp_client,
             mcp_tools=[SimpleNamespace(name="tavily_search")],
             mcp_module_map={"tavily_search": "mcp:tavily-mcp"},
+            positive_patterns=[],
         )
         is False
     )
@@ -801,13 +803,14 @@ async def test_should_prefer_search_mcp_requires_actual_search_tool(
             mcp_client,
             mcp_tools=[SimpleNamespace(name="brave_fetch")],
             mcp_module_map={"brave_fetch": "mcp:brave-search"},
+            positive_patterns=[],
         )
         is False
     )
 
 
 @pytest.mark.asyncio
-async def test_should_prefer_search_mcp_prefers_non_tavily_search_tool_when_available() -> None:
+async def test_should_prefer_search_mcp_prefers_non_tavily_search_tool_when_allowed() -> None:
     mcp_client = SimpleNamespace(
         config=SimpleNamespace(
             servers={
@@ -824,8 +827,36 @@ async def test_should_prefer_search_mcp_prefers_non_tavily_search_tool_when_avai
             mcp_client,
             mcp_tools=[SimpleNamespace(name="brave_search")],
             mcp_module_map={"brave_search": "mcp:brave-search"},
+            positive_patterns=[("mcp", "brave-search", "*")],
         )
         is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_should_prefer_search_mcp_keeps_web_search_when_server_not_allowed_by_agent() -> None:
+    """A search-capable MCP server that the agent's patterns do not expose must
+    not remove the built-in web_search tool.
+    """
+    mcp_client = SimpleNamespace(
+        config=SimpleNamespace(
+            servers={
+                "ascend-doc-mcp": SimpleNamespace(
+                    enabled=True,
+                    env={},
+                )
+            }
+        )
+    )
+
+    assert (
+        await AgentFactory._should_prefer_search_mcp(
+            mcp_client,
+            mcp_tools=[SimpleNamespace(name="ascend-doc-mcp_search_docs")],
+            mcp_module_map={"ascend-doc-mcp_search_docs": "mcp:ascend-doc-mcp"},
+            positive_patterns=[("mcp", "msprof-mcp", "*")],
+        )
+        is False
     )
 
 

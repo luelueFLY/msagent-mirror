@@ -183,7 +183,7 @@ sequenceDiagram
 
 | Agent | 领域定位 | 默认性 | 典型 Tool Pattern | 典型 Skill Pattern | SubAgent |
 | -- | -- | -- | -- | -- | -- |
-| Profiler | Ascend Profiling / 性能分析 | 默认 Agent | `impl:deepagents:*` + `mcp:msprof-mcp:*` | profiler DB 分析、快慢卡诊断、MFU 计算 | `explorer` + `general-purpose` |
+| Profiler | Ascend Profiling / 性能分析 | 默认 Agent | `impl:deepagents:*` + `mcp:msprof-mcp:*` | profiler DB 分析、快慢卡诊断、MFU 计算 | `explorer` + `general-purpose` + `ascend-knowledge` |
 | Accuracy | 模型精度分析 | 否 | `impl:deepagents:*` | RL 一致性、NaN/溢出、确定性分析 | `explorer` + `general-purpose` |
 | Quantizer | 模型量化与适配 | 否 | `impl:deepagents:*` | msModelSlim 分析、适配、量化 | `explorer` + `general-purpose` |
 | Modeling | msmodeling 仿真建模 | 否 | `impl:deepagents:*` | text_generate / throughput_optimizer / 设备画像 / 模型接入准备 | `explorer` + `general-purpose` |
@@ -199,10 +199,11 @@ sequenceDiagram
 
 #### 5.2 SubAgent 设计
 
-默认模板内置两个 SubAgent：
+默认模板内置三个 SubAgent：
 
 - `explorer`：偏代码/仓库结构探索，适合定位文件、实现点、依赖关系。
 - `general-purpose`：偏多步研究、综合分析与推理。
+- `ascend-knowledge`：Ascend 资料/知识查询子代理，负责查找并核验 Ascend 官方文档、社区知识、示例与 Ascend 组织开源代码，返回带证据等级（`sources`/`ref`/`facts`/`inferences`/`unverified`）的结论；当前由 Profiler 接入。
 
 它们本质上复用主 Agent 同一套运行时，只是：
 
@@ -235,7 +236,7 @@ flowchart LR
     H --> H1["Prompt: 性能分析方法论"]
     H --> H2["Tools: deepagents + msprof-mcp"]
     H --> H3["Skills: profiler DB / 快慢卡 / MFU"]
-    H --> H4["SubAgents: explorer + general-purpose"]
+    H --> H4["SubAgents: explorer + general-purpose + ascend-knowledge"]
 
     A --> A1["Prompt: 精度定位方法论"]
     A --> A2["Tools: deepagents"]
@@ -303,7 +304,8 @@ resources/configs/default/
 │  └─ SpecTrainer.yml
 ├─ subagents/
 │  ├─ explorer.yml
-│  └─ general-purpose.yml
+│  ├─ general-purpose.yml
+│  └─ ascend-knowledge.yml
 ├─ llms/
 ├─ checkpointers/
 ├─ sandboxes/

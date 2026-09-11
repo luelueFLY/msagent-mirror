@@ -122,6 +122,12 @@
 - `repair_command` 配置存在但未显式设置 `repair_timeout` 时，默认补成 `30`
 - 对于 `msprof-mcp` 这类本地 `stdio` MCP，通常优先关注 `stateful` 与 `invoke_timeout`
 
+内置 MCP 服务说明：
+
+- `msprof-mcp`：Ascend Profiling 数据分析服务（本地 stdio，默认启用）。
+- `ascend-doc-mcp`：昇腾社区文档与开源仓库资料查询服务（默认启用）。通过 `msagent-ascend-doc-mcp` 启动器以 `npx` 拉起 `@opencxd/ascend-doc-mcp`，默认查询 Ascend 社区文档（产品/版本/文档目录/检索/开源仓库文件/安装下载）。需要 Node.js（≥22）与 npm/npx，首次启动会从 npm 拉取包；无 Node 或离线环境可在会话中用 `/mcp` 关闭该服务，此时 `ascend-knowledge` 子代理将无法执行文档/仓库查询，会向主 Agent 说明不可用。npm registry 可用环境变量 `MSAGENT_NPM_REGISTRY` 指定，`MSAGENT_NPM_REGISTRY_ONLY=1` 可强制只使用该 registry。
+- `tavily-mcp`：网络检索服务（默认关闭，配置 `TAVILY_API_KEY` 后可在 `/mcp` 中启用）。
+
 日常使用方式：
 
 - 用 `/mcp` 在会话中切换已有 MCP 服务的启用状态
