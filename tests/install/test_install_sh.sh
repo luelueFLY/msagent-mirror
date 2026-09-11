@@ -48,6 +48,7 @@ run_installer() {
   export HOME="${TEST_HOME}"
   export MSAGENT_YES=1
   export MSAGENT_NO_MODIFY_PATH=1
+  export MSAGENT_NO_ASCEND_DOC_MCP=1
   export UV_BIN="${FAKE_UV}"
   export MSAGENT_TEST_UV_LOG="${UV_LOG}"
   export MSAGENT_TEST_TOOL_BIN="${TEST_BIN}"
@@ -84,6 +85,7 @@ grep -q -- "--default-index https://example.invalid/simple" "${UV_LOG}" && ok "p
 grep -q "mindstudio-agent==1.2.3" "${UV_LOG}" && ok "uses pinned spec" || ko "uses pinned spec"
 grep -q -- "--python >=3.11" "${UV_LOG}" && ok "uses >=3.11 python request" || ko "uses >=3.11 python request"
 grep -q "MSAGENT_NO_MODIFY_PATH is set" "${OUT}" && ok "honors MSAGENT_NO_MODIFY_PATH" || ko "honors MSAGENT_NO_MODIFY_PATH"
+grep -q "Skipping ascend-doc-mcp preparation" "${OUT}" && ok "honors MSAGENT_NO_ASCEND_DOC_MCP" || ko "honors MSAGENT_NO_ASCEND_DOC_MCP"
 [ ! -f "${TEST_HOME}/.bashrc" ] && ok "no shell profile modified" || ko "no shell profile modified"
 cleanup_env
 

@@ -43,6 +43,7 @@ dependencies = [
 
 [project.scripts]
 msagent = "msagent.cli.bootstrap.app:cli"
+msagent-ascend-doc-mcp = "msagent.mcp.launchers.ascend_doc_mcp:main"
 
 [tool.mypy]
 python_version = "3.11"

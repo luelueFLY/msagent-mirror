@@ -409,6 +409,10 @@ class AgentFactory:
         ]
         mcp_tools: list[BaseTool] = []
         mcp_module_map: dict[str, str] = {}
+
+        tool_patterns = list(config.tools.patterns or []) if config.tools is not None else []
+        positive_patterns, negative_patterns = self._compile_tool_patterns(tool_patterns)
+
         if mcp_client is not None:
             loaded = await mcp_client.tools()
             mcp_tools = list(loaded or [])
@@ -418,14 +422,13 @@ class AgentFactory:
                 mcp_client,
                 mcp_tools=mcp_tools,
                 mcp_module_map=mcp_module_map,
+                positive_patterns=positive_patterns,
             ):
                 runtime_tools = [t for t in runtime_tools if self._tool_name(t) != "web_search"]
         catalog_runtime_tools = list(runtime_tools)
         catalog_mcp_tools = list(mcp_tools)
 
-        tool_patterns = list(config.tools.patterns or []) if config.tools is not None else []
         mcp_servers = self._collect_mcp_servers(mcp_client, mcp_module_map)
-        positive_patterns, negative_patterns = self._compile_tool_patterns(tool_patterns)
 
         if config.tools is not None:
             runtime_tools, mcp_tools = self._filter_tools_by_patterns(
@@ -930,6 +933,7 @@ class AgentFactory:
         *,
         mcp_tools: list[Any],
         mcp_module_map: dict[str, str],
+        positive_patterns: list[tuple[str, str, str]],
     ) -> bool:
         config = getattr(mcp_client, "config", None)
         servers = getattr(config, "servers", None)
@@ -954,8 +958,24 @@ class AgentFactory:
                     return True
                 continue
 
-            return True
+            # Only prefer an MCP search server when the current agent's tool
+            # patterns actually expose its tools. Otherwise dropping the
+            # built-in web_search would silently remove generic web search
+            # from agents that cannot even call the server's tools.
+            if AgentFactory._mcp_server_allowed_by_patterns(positive_patterns, str(name)):
+                return True
 
+        return False
+
+    @staticmethod
+    def _mcp_server_allowed_by_patterns(
+        positive_patterns: list[tuple[str, str, str]],
+        server_name: str,
+    ) -> bool:
+        """Whether the agent's positive tool patterns allow an MCP server."""
+        for category_p, module_p, _name_p in positive_patterns:
+            if fnmatch("mcp", category_p) and fnmatch(server_name, module_p):
+                return True
         return False
 
     @staticmethod

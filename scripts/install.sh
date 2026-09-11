@@ -27,6 +27,12 @@
 #   MSAGENT_NO_FALLBACK       set to 1 to disable the venv fallback
 #   MSAGENT_FALLBACK_VENV     venv path used by the fallback install (default: ~/.msagent-venv)
 #   MSAGENT_WITH_EXECUTABLES_FROM  package whose executables are exposed too (default: msprof-mcp)
+#   MSAGENT_NO_ASCEND_DOC_MCP      set to 1 to skip Node provisioning and the ascend-doc-mcp pre-install
+#   MSAGENT_ASCEND_DOC_MCP_REQUIRE set to 1 to abort install when Node/ascend-doc-mcp prep fails
+#   MSAGENT_NODE_HOME              user-local Node root used by ascend-doc-mcp (default: ~/.msagent/node)
+#   MSAGENT_NPM_REGISTRY           npm registry for the ascend-doc-mcp pre-install (default: npmmirror, npmjs fallback)
+#   MSAGENT_NPM_CACHE              npm cache directory (default: ~/.cache/msagent/npm-cache)
+#   MSAGENT_ASCEND_DOC_MCP_PREFIX  local ascend-doc-mcp install prefix (default: ~/.msagent/ascend-doc-mcp)
 #   UV_DEFAULT_INDEX / UV_INDEX_URL / PIP_INDEX_URL  used as a last-resort fallback
 #   UV_PYTHON_INSTALL_MIRROR  mirror for managed CPython downloads (domestic candidates validated for real binary content)
 #   UV_NATIVE_TLS              use the system certificate store for uv (default: 1, set 0 to disable)
@@ -527,6 +533,135 @@ expose_tool_executables() {
 }
 
 # ---------------------------------------------------------------------------
+# Optional stage: provision a user-local Node.js (npmmirror mirror) and
+# pre-install @opencxd/ascend-doc-mcp into ~/.msagent/ascend-doc-mcp. The
+# msagent ascend-doc-mcp launcher then runs the pre-installed copy directly:
+# no global Node/npx and no on-demand npm fetch are needed on first use.
+#
+#   MSAGENT_NO_ASCEND_DOC_MCP=1        skip this stage entirely
+#   MSAGENT_ASCEND_DOC_MCP_REQUIRE=1   abort the installer if this stage fails
+#   MSAGENT_NODE_HOME                  user-local Node root (default ~/.msagent/node)
+#   MSAGENT_NPM_REGISTRY               npm registry (default npmmirror, npmjs fallback)
+#   MSAGENT_NPM_CACHE                  npm cache dir (default ~/.cache/msagent/npm-cache)
+#   MSAGENT_ASCEND_DOC_MCP_PREFIX      local install prefix (~/.msagent/ascend-doc-mcp)
+# ---------------------------------------------------------------------------
+NODE_DOWNLOAD_BASE="https://registry.npmmirror.com/-/binary/node/latest-v22.x"
+
+node_platform_name() {
+  local arch
+  case "$(uname -m)" in
+    x86_64|amd64) arch="x64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) return 1 ;;
+  esac
+  case "$(uname -s)" in
+    Darwin) printf 'darwin-%s' "${arch}" ;;
+    Linux) printf 'linux-%s' "${arch}" ;;
+    *) return 1 ;;
+  esac
+}
+
+select_npm_registry() {
+  local candidate
+  if [ -n "${MSAGENT_NPM_REGISTRY:-}" ]; then
+    printf '%s' "${MSAGENT_NPM_REGISTRY}"
+    return 0
+  fi
+  for candidate in "https://registry.npmmirror.com" "https://registry.npmjs.org"; do
+    if probe_url "${candidate}"; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
+  printf '%s' "https://registry.npmmirror.com"
+}
+
+install_user_node() {
+  # Downloads the newest Node 22 LTS tarball from the npmmirror mirror into
+  # NODE_HOME and echoes the path to its bin directory on success.
+  local platform listing names best url tmp tarball node_root
+  platform="$(node_platform_name)" || return 1
+  listing="$(curl -fsSL --connect-timeout 8 --max-time 25 "${NODE_DOWNLOAD_BASE}/" 2>/dev/null || true)"
+  [ -n "${listing}" ] || return 1
+  names="$(printf '%s\n' "${listing}" | grep -oE "node-v[0-9]+\.[0-9]+\.[0-9]+-${platform}\.tar\.xz")"
+  [ -n "${names}" ] || return 1
+  best="$(printf '%s\n' "${names}" | sort -V | tail -n 1)"
+  url="${NODE_DOWNLOAD_BASE}/${best}"
+  log_info "Downloading ${best} from the npmmirror Node mirror..."
+  tmp="$(mktemp -d)"
+  tarball="${tmp}/${best}"
+  if ! curl -fsSL --connect-timeout 10 --max-time 600 -o "${tarball}" "${url}"; then
+    rm -rf "${tmp}"
+    return 1
+  fi
+  if ! tar -xf "${tarball}" -C "${tmp}"; then
+    rm -rf "${tmp}"
+    return 1
+  fi
+  node_root="$(find "${tmp}" -maxdepth 1 -type d -name 'node-v*' | head -n 1)"
+  [ -n "${node_root}" ] || {
+    rm -rf "${tmp}"
+    return 1
+  }
+  rm -rf "${NODE_HOME}"
+  mkdir -p "${NODE_HOME}"
+  mv "${node_root}"/* "${NODE_HOME}/"
+  rm -rf "${tmp}"
+  [ -x "${NODE_HOME}/bin/node" ] || return 1
+  printf '%s' "${NODE_HOME}/bin"
+}
+
+prepare_ascend_doc_mcp() {
+  local node_bin_dir registry prefix cache
+  if [ "${MSAGENT_NO_ASCEND_DOC_MCP:-0}" = "1" ]; then
+    log_info "Skipping ascend-doc-mcp preparation (MSAGENT_NO_ASCEND_DOC_MCP=1)."
+    return 0
+  fi
+  NODE_HOME="${MSAGENT_NODE_HOME:-${HOME}/.msagent/node}"
+  node_bin_dir=""
+  if [ -x "${NODE_HOME}/bin/node" ]; then
+    node_bin_dir="${NODE_HOME}/bin"
+  elif command -v node >/dev/null 2>&1; then
+    node_bin_dir="$(dirname "$(command -v node)")"
+  else
+    log_info "Node.js not found; downloading a user-local copy (Node 22 LTS) from the npmmirror mirror..."
+    node_bin_dir="$(install_user_node)" || {
+      log_warn "Could not provision Node.js automatically. Install Node.js >= 22"
+      log_warn "(https://nodejs.org) or point MSAGENT_NODE_HOME at an existing install, then re-run."
+      return 1
+    }
+    log_success "Provisioned user-local Node at ${NODE_HOME}."
+  fi
+  export PATH="${node_bin_dir}:${PATH}"
+
+  if ! command -v npm >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
+    log_warn "npm/npx are unavailable under ${node_bin_dir}; skipping the ascend-doc-mcp pre-install."
+    return 1
+  fi
+
+  registry="$(select_npm_registry)"
+  log_info "Pre-installing @opencxd/ascend-doc-mcp (registry: ${registry})..."
+  prefix="${MSAGENT_ASCEND_DOC_MCP_PREFIX:-${HOME}/.msagent/ascend-doc-mcp}"
+  cache="${MSAGENT_NPM_CACHE:-${HOME}/.cache/msagent/npm-cache}"
+  mkdir -p "${prefix}" "${cache}"
+  if ! npm install --prefix "${prefix}" --registry "${registry}" --cache "${cache}" \
+        --no-audit --no-fund --no-package-lock "@opencxd/ascend-doc-mcp@latest" >/dev/null 2>&1; then
+    log_warn "npm pre-install of @opencxd/ascend-doc-mcp failed (${registry}); the launcher will fetch on demand."
+    return 1
+  fi
+  if [ ! -f "${prefix}/node_modules/@opencxd/ascend-doc-mcp/package.json" ]; then
+    log_warn "ascend-doc-mcp pre-install did not produce an install under ${prefix}."
+    return 1
+  fi
+  log_success "ascend-doc-mcp pre-installed locally at ${prefix}."
+  if [ -x "${node_bin_dir}/node" ]; then
+    local node_version
+    node_version="$("${node_bin_dir}/node" --version 2>/dev/null || true)"
+    log_info "Node version: ${node_version}"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Install mindstudio-agent as an isolated uv tool (target version resolved above)
 # ---------------------------------------------------------------------------
 if command -v msagent >/dev/null 2>&1; then
@@ -617,6 +752,17 @@ fi
 
 # Ensure msprof-mcp / msprof-analyze are reachable from PATH (best effort).
 expose_tool_executables
+
+# Optional: provision Node and pre-install ascend-doc-mcp so the docs MCP works
+# from the first run (domestic npm/node mirrors; best-effort unless required).
+if ! prepare_ascend_doc_mcp; then
+  if [ "${MSAGENT_ASCEND_DOC_MCP_REQUIRE:-0}" = "1" ]; then
+    log_error "ascend-doc-mcp preparation failed and MSAGENT_ASCEND_DOC_MCP_REQUIRE=1 is set."
+    exit 1
+  fi
+  log_warn "ascend-doc-mcp preparation did not complete (non-fatal)."
+  log_warn "The feature needs Node.js >= 22; install it (or set MSAGENT_NODE_HOME), then re-run."
+fi
 
 # ---------------------------------------------------------------------------
 # Verify

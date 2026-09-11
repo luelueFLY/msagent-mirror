@@ -109,11 +109,13 @@ def configure_logging(
 
     # Suppress benign pydantic serializer noise when LangGraph/deepagents
     # passes runtime context objects through internal serialization paths.
+    # The warning is raised from pydantic.functional_validators on newer
+    # pydantic and pydantic.main on older ones, so cover both modules.
     warnings.filterwarnings(
         "ignore",
         message=r"Pydantic serializer warnings:",
         category=UserWarning,
-        module=r"pydantic(\.v1)?\.main",
+        module=r"pydantic(\.v1)?\.(main|functional_validators)",
     )
 
     # Always write logs to disk so they are available without -v.

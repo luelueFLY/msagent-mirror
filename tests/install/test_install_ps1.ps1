@@ -53,6 +53,7 @@ function Start-IsolatedInstaller {
   $script:UvLog = Join-Path $TestHome 'uv-args.log'
   $env:MSAGENT_YES = '1'
   $env:MSAGENT_NO_MODIFY_PATH = '1'
+  $env:MSAGENT_NO_ASCEND_DOC_MCP = '1'
   $env:MSAGENT_TEST_UV_LOG = $script:UvLog
   $env:MSAGENT_TEST_TOOL_BIN = $script:TestBin
   # Put the fake uv first on PATH so Get-Command uv finds it.
@@ -64,7 +65,7 @@ function Start-IsolatedInstaller {
 
 function Stop-IsolatedInstaller {
   Remove-Item -Recurse -Force $script:TestHome -ErrorAction SilentlyContinue
-  Remove-Item Env:MSAGENT_YES, Env:MSAGENT_NO_MODIFY_PATH, Env:MSAGENT_TEST_UV_LOG, Env:MSAGENT_TEST_TOOL_BIN, Env:MSAGENT_VERSION, Env:MSAGENT_INDEX, Env:MSAGENT_TEST_UV_FAIL, Env:MSAGENT_TEST_UV_FAIL_PYPI_ONLY -ErrorAction SilentlyContinue
+  Remove-Item Env:MSAGENT_YES, Env:MSAGENT_NO_MODIFY_PATH, Env:MSAGENT_NO_ASCEND_DOC_MCP, Env:MSAGENT_TEST_UV_LOG, Env:MSAGENT_TEST_TOOL_BIN, Env:MSAGENT_VERSION, Env:MSAGENT_INDEX, Env:MSAGENT_TEST_UV_FAIL, Env:MSAGENT_TEST_UV_FAIL_PYPI_ONLY -ErrorAction SilentlyContinue
 }
 
 # ---------------------------------------------------------------------------

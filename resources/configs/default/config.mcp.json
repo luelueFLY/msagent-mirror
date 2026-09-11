@@ -12,6 +12,18 @@
       "repair_timeout": 30,
       "invoke_timeout": 3600.0
     },
+    "ascend-doc-mcp": {
+      "command": "msagent-ascend-doc-mcp",
+      "args": [],
+      "transport": "stdio",
+      "env": {},
+      "include": [],
+      "exclude": [],
+      "enabled": true,
+      "stateful": true,
+      "repair_timeout": 30,
+      "invoke_timeout": 60.0
+    },
     "tavily-mcp": {
       "command": "npx",
       "args": [

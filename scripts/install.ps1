@@ -24,6 +24,12 @@
     MSAGENT_YES               set to '1' to accept prompts without asking
     MSAGENT_NO_FALLBACK       set to '1' to disable the venv fallback
     MSAGENT_FALLBACK_VENV     venv path used by the fallback install (default: %USERPROFILE%\.msagent-venv)
+    MSAGENT_NO_ASCEND_DOC_MCP  set to any value to skip Node provisioning and the ascend-doc-mcp pre-install
+    MSAGENT_ASCEND_DOC_MCP_REQUIRE  abort install when Node/ascend-doc-mcp prep fails
+    MSAGENT_NODE_HOME          user-local Node root (default: %USERPROFILE%\.msagent\node)
+    MSAGENT_NPM_REGISTRY       npm registry for the ascend-doc-mcp pre-install (default: npmmirror, npmjs fallback)
+    MSAGENT_NPM_CACHE          npm cache directory
+    MSAGENT_ASCEND_DOC_MCP_PREFIX  local ascend-doc-mcp install prefix (default: %USERPROFILE%\.msagent\ascend-doc-mcp)
     UV_DEFAULT_INDEX / UV_INDEX_URL / PIP_INDEX_URL   used as a last-resort fallback
     UV_PYTHON_INSTALL_MIRROR  mirror for managed CPython downloads (domestic candidates validated for real binary content)
     UV_NATIVE_TLS             use the system certificate store for uv (default: 1, set 0 to disable)
@@ -408,6 +414,145 @@ function Expose-ToolExecutables {
 }
 
 # ---------------------------------------------------------------------------
+# Optional stage: provision a user-local Node.js (npmmirror mirror) and
+# pre-install @opencxd/ascend-doc-mcp into %USERPROFILE%\.msagent\ascend-doc-mcp.
+# The msagent ascend-doc-mcp launcher then runs the pre-installed copy directly,
+# so no global Node/npx and no on-demand npm fetch are needed on first use.
+#
+#   MSAGENT_NO_ASCEND_DOC_MCP=1        skip this stage entirely
+#   MSAGENT_ASCEND_DOC_MCP_REQUIRE=1   abort the installer if this stage fails
+#   MSAGENT_NODE_HOME                  user-local Node root (default %USERPROFILE%\.msagent\node)
+#   MSAGENT_NPM_REGISTRY               npm registry (default npmmirror, npmjs fallback)
+#   MSAGENT_NPM_CACHE                  npm cache dir
+#   MSAGENT_ASCEND_DOC_MCP_PREFIX      local install prefix (%USERPROFILE%\.msagent\ascend-doc-mcp)
+# ---------------------------------------------------------------------------
+function Select-NpmRegistry {
+  if ($env:MSAGENT_NPM_REGISTRY) { return $env:MSAGENT_NPM_REGISTRY }
+  foreach ($candidate in @('https://registry.npmmirror.com', 'https://registry.npmjs.org')) {
+    if (Test-Url $candidate) { return $candidate }
+  }
+  return 'https://registry.npmmirror.com'
+}
+
+function Install-UserNode {
+  # Downloads the newest Node 22 LTS win-x64 zip from the npmmirror mirror
+  # into the user-local Node home and returns its path on success.
+  $nodeHome = $script:MsagentNodeHome
+  $platform = if ([Environment]::Is64BitOperatingSystem) { 'win-x64' } else { 'win-x86' }
+  $base = 'https://registry.npmmirror.com/-/binary/node/latest-v22.x/'
+  try {
+    $listing = (Invoke-WebRequest -Uri $base -UseBasicParsing -TimeoutSec 25).Content
+  } catch {
+    return $null
+  }
+  $rx = [regex]::new('node-v(\d+\.\d+\.\d+)-' + $platform + '\.zip')
+  $best = $null
+  $bestVersion = $null
+  foreach ($match in $rx.Matches($listing)) {
+    $version = [version]::new($match.Groups[1].Value)
+    if (-not $bestVersion -or $version -gt $bestVersion) {
+      $bestVersion = $version
+      $best = $match.Groups[0].Value
+    }
+  }
+  if (-not $best) { return $null }
+  $url = $base + $best
+  Write-Step "Downloading $best from the npmmirror Node mirror..."
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("msagent-node-" + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $tmp | Out-Null
+  $zip = Join-Path $tmp $best
+  try {
+    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -TimeoutSec 600
+    Expand-Archive -Path $zip -DestinationPath $tmp
+    $nodeRoot = Get-ChildItem -Path $tmp -Directory -Filter 'node-v*' | Select-Object -First 1
+    if (-not $nodeRoot) { throw 'node archive did not contain a node-v* directory' }
+    if (Test-Path $nodeHome) { Remove-Item -Recurse -Force $nodeHome }
+    New-Item -ItemType Directory -Path $nodeHome | Out-Null
+    Get-ChildItem -Path $nodeRoot.FullName | Move-Item -Destination $nodeHome
+  } catch {
+    Write-Warn "Node download failed: $($_.Exception.Message)"
+    Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    return $null
+  }
+  Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+  if (-not (Test-Path (Join-Path $nodeHome 'node.exe'))) { return $null }
+  return $nodeHome
+}
+
+function Prepare-AscendDocMcp {
+  if ($env:MSAGENT_NO_ASCEND_DOC_MCP) {
+    Write-Step 'Skipping ascend-doc-mcp preparation (MSAGENT_NO_ASCEND_DOC_MCP is set).'
+    return $true
+  }
+  $script:MsagentNodeHome = if ($env:MSAGENT_NODE_HOME) { $env:MSAGENT_NODE_HOME } else { Join-Path $HOME '.msagent\node' }
+  $nodeHome = $script:MsagentNodeHome
+  $nodeBinDir = $null
+  $nodeExe = Join-Path $nodeHome 'node.exe'
+  if (Test-Path $nodeExe) {
+    $nodeBinDir = $nodeHome
+  } else {
+    $systemNode = Get-Command node -ErrorAction SilentlyContinue
+    if ($systemNode) { $nodeBinDir = Split-Path $systemNode.Source -Parent }
+  }
+  if (-not $nodeBinDir) {
+    Write-Step 'Node.js not found; downloading a user-local copy (Node 22 LTS) from the npmmirror mirror...'
+    $nodeHome = Install-UserNode
+    if (-not $nodeHome) {
+      Write-Warn 'Could not provision Node.js automatically. Install Node.js >= 22 from https://nodejs.org and re-run, or set MSAGENT_NODE_HOME.'
+      return $false
+    }
+    $nodeBinDir = $nodeHome
+    Write-Success "Provisioned user-local Node at $nodeHome."
+  }
+  if ($env:PATH -notlike "*$nodeBinDir*") {
+    $env:PATH = $nodeBinDir + [IO.Path]::PathSeparator + $env:PATH
+  }
+  # Prefer npm.cmd: PowerShell may otherwise resolve 'npm' to npm.ps1, which
+  # the machine ExecutionPolicy can block. npm.cmd runs through cmd.exe and is
+  # independent of the PowerShell ExecutionPolicy.
+  $npmCmd = Join-Path $nodeBinDir 'npm.cmd'
+  if (-not (Test-Path -LiteralPath $npmCmd)) {
+    $npmFromPath = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if ($npmFromPath) { $npmCmd = $npmFromPath.Source }
+  }
+  if (-not $npmCmd -or -not (Test-Path -LiteralPath $npmCmd)) {
+    Write-Warn 'npm.cmd is unavailable in the provisioned Node; skipping the ascend-doc-mcp pre-install.'
+    return $false
+  }
+  $registry = Select-NpmRegistry
+  Write-Step "Pre-installing @opencxd/ascend-doc-mcp (registry: $registry)..."
+  $prefix = if ($env:MSAGENT_ASCEND_DOC_MCP_PREFIX) { $env:MSAGENT_ASCEND_DOC_MCP_PREFIX } else { Join-Path $HOME '.msagent\ascend-doc-mcp' }
+  $cache = if ($env:MSAGENT_NPM_CACHE) { $env:MSAGENT_NPM_CACHE } else { Join-Path $HOME '.cache\msagent\npm-cache' }
+  New-Item -ItemType Directory -Force -Path $prefix, $cache | Out-Null
+  # npm writes notices/warnings to stderr. Under $ErrorActionPreference='Stop'
+  # those become terminating NativeCommandError records, so temporarily relax
+  # EAP and merge stderr into the pipeline before discarding it.
+  $npmExitCode = $null
+  $previousEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    & $npmCmd install --prefix $prefix --registry $registry --cache $cache --no-audit --no-fund --no-package-lock '@opencxd/ascend-doc-mcp@latest' 2>&1 | Out-Null
+    $npmExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousEap
+  }
+  if ($npmExitCode -ne 0) {
+    Write-Warn "npm pre-install of @opencxd/ascend-doc-mcp failed (exit $npmExitCode, $registry); the launcher will fetch on demand."
+    return $false
+  }
+  if (-not (Test-Path (Join-Path $prefix 'node_modules\@opencxd\ascend-doc-mcp\package.json'))) {
+    Write-Warn "ascend-doc-mcp pre-install did not produce an install under $prefix."
+    return $false
+  }
+  Write-Success "ascend-doc-mcp pre-installed locally at $prefix."
+  if (Test-Path $nodeExe) {
+    $nodeVersion = & (Join-Path $nodeHome 'node.exe') --version
+    Write-Step "Node version: $nodeVersion"
+  }
+  return $true
+}
+
+# ---------------------------------------------------------------------------
 # Install mindstudio-agent as an isolated uv tool (always latest, no version pin)
 # ---------------------------------------------------------------------------
 # Prefer any existing local Python >= 3.11 so a managed CPython is only
@@ -495,6 +640,16 @@ if (-not $installOk) {
 }
 if (-not $script:ToolBin) { $script:ToolBin = Get-ToolBinDir }
 Expose-ToolExecutables
+
+# Optional: provision Node and pre-install ascend-doc-mcp so the docs MCP works
+# from the first run (domestic npm/node mirrors; best-effort unless required).
+if (-not (Prepare-AscendDocMcp)) {
+  if ($env:MSAGENT_ASCEND_DOC_MCP_REQUIRE) {
+    Die 'ascend-doc-mcp preparation failed and MSAGENT_ASCEND_DOC_MCP_REQUIRE is set.'
+  }
+  Write-Warn 'ascend-doc-mcp preparation did not complete (non-fatal).'
+  Write-Warn 'The feature needs Node.js >= 22; install it (or set MSAGENT_NODE_HOME), then re-run.'
+}
 
 # Make msagent available in the current session immediately (the user-level
 # PATH change only affects newly started processes).

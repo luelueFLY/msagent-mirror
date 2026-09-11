@@ -1,17 +1,17 @@
 ---
 name: github-raw-fetch
-description: 当用户提供 GitHub 文件页面链接，或希望读取某个仓库中的源码、配置、README、Markdown、docs 内容时，使用此技能。技能不仅支持将 `github.com/<owner>/<repo>/blob/<ref>/...` 转换为 `raw.githubusercontent.com` 链接，还要求在读取仓库 docs 前优先读取同仓库同 ref 的 `agent_router.md`，根据其中声明的目录结构或路由规则拼出真实路径，并优先通过 `curl` 获取内容。
+description: 当用户提供 GitHub 文件页面链接，或希望读取某个仓库中的源码、配置、README、Markdown、docs 内容时，使用此技能。技能支持将 `github.com/<owner>/<repo>/blob/<ref>/...` 转换为 `raw.githubusercontent.com` 链接并获取内容；读取仓库 docs 时先列出仓库根目录、按真实结构定位 `docs/` 目录（语言子目录、索引），不要假设所有仓库都有固定目录或 `agent_router.md`（该文件仅当根目录确实存在时才可选参考）。
 ---
 
-# GitHub Raw Content 与 Docs Router 读取
+# GitHub Raw Content 与仓库文档读取
 
 ## 1. 技能目标
 
 当用户要求读取 GitHub 上的源码、配置、README、Markdown 或 docs 内容时，按下面的顺序执行：
 
 1. 先识别仓库、`ref`、目标文件或目标主题
-2. 如果目标属于仓库文档体系，先读取仓库根目录的 `agent_router.md`
-3. 根据 `agent_router.md` 中的路由、目录、别名、入口说明拼出真实路径
+2. 需要定位文档时，先列出仓库根目录，找到真实存在的文档目录与入口
+3. 按实际目录结构逐层定位目标文件（不猜路径、不假设固定布局）
 4. 将最终路径转换成 raw 链接
 5. 使用 `curl` 获取文件内容
 
@@ -23,7 +23,7 @@ description: 当用户提供 GitHub 文件页面链接，或希望读取某个�
   - `https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path-to-file>`
 - 用户要读取的是 README、源码、配置、脚本、JSON、YAML、Markdown 等纯文本文件
 - 用户要读取的是某个仓库的 docs、文档入口、FAQ、指南、设计文档、API 文档
-- 用户只给出了仓库和想看的文档主题，但真实 docs 路径可能受 `agent_router.md` 控制
+- 用户只给出了仓库和想看的文档主题，但真实 docs 路径需要按仓库实际结构定位
 
 以下场景不属于本技能的直接处理范围：
 
@@ -58,80 +58,70 @@ https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path-to-file>
 
 如果用户提供的本身就是 `raw.githubusercontent.com` 链接，则不要重复转换，直接使用该链接。
 
-### 3.3 读取 docs 前必须先读 `agent_router.md`
+### 3.3 读取仓库 docs：先列目录，按真实结构定位
 
-只要需求满足下面任一条件，就必须先读取目标仓库根目录下的 `agent_router.md`：
+`agent_router.md` **不是前置依赖，不是所有仓库都有该文件**。读取仓库文档的默认流程是：
 
-- 用户要看的内容属于 docs、文档、FAQ、指南、Markdown 文档体系
-- 用户给出的路径位于 `docs/`、`doc/`、`wiki/`、`manual/` 等文档目录
-- 用户没有给出精确文件路径，只说“看某个仓库里关于 X 的文档”
+1. 先列出目标仓库根目录（见 §3.5 的目录探查方式），确认：
+   - 根 `README.md` / `README_EN.md` 是否存在；
+   - 文档目录的真实名称与位置：`docs/`、`doc/`、`documentation/`、`docs_zh/` 等都以列表结果为准；
+2. 进入文档目录后按实际结构继续定位：语言子目录（如 `docs/zh/`、`docs/en/`，以实际为准）→ 索引文件（`README.md`、`index.md` 等）→ 目标文档；
+3. 每层都用目录列表确认，**不要凭经验猜测路径**；
+4. 找不到 `docs/` 等文档目录时，退化为读取根 README 或仓库内与主题相关的 Markdown，并如实说明所依据的结构。
 
-`agent_router.md` 的定位规则：
+### 3.4 可选加速：`agent_router.md` 仅在确实存在时使用
 
-```text
-https://github.com/<owner>/<repo>/blob/<ref>/agent_router.md
-```
-
-其 raw 形式为：
+如果根目录列表里**确实存在** `agent_router.md`（部分仓库用它声明文档目录结构与入口映射），可先读取它辅助定位：
 
 ```text
 https://raw.githubusercontent.com/<owner>/<repo>/<ref>/agent_router.md
 ```
 
-要求：
+规则：
 
-1. `agent_router.md` 必须使用与目标文档相同的仓库和相同的 `ref`
-2. 不要跳过这一步直接凭经验猜测 `docs/` 目录结构
-3. 如果目标文件本身就是 `agent_router.md`，则直接读取它，不需要额外前置步骤
-4. 读取完 `agent_router.md` 后，优先依据其中定义的入口文档、目录映射、别名、语言目录、跳转规则来拼最终路径
+1. `agent_router.md` 必须与目标文档使用相同的仓库和相同的 `ref`
+2. 该文件缺失或返回 404 时**不要阻塞**：直接回到 §3.3 按真实目录结构继续定位，并说明“未发现 router，按实际 docs 目录定位”
+3. router 中的目录映射只作提示，最终以目录列表确认的真实路径为准
 
-示例：
+### 3.5 目录探查与内容获取方式
 
-```text
-https://github.com/kali20gakki/msprof/blob/master/agent_router.md
-```
-
-当读取 `kali20gakki/msprof` 仓库中的 docs 时，应优先读取上面的 router 文件，再确定真正的文档路径。
-
-### 3.4 `curl` 是默认抓取方式
-
-获取 raw 内容时，优先使用 `curl`，不要依赖 GitHub HTML 页面渲染结果。
-
-推荐命令：
+- 目录列表使用 GitHub Contents API（单层、一次一个目录）：
 
 ```bash
-curl -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path-to-file>"
+curl.exe -s -L "https://api.github.com/repos/<owner>/<repo>/contents/<path>?ref=<ref>"
 ```
 
-如果运行环境是 PowerShell，并且需要避免 `curl` 别名差异，优先使用：
+`<path>` 为空时列出仓库根目录。响应为 JSON 数组，逐项含 `name`、`type`（file/dir）、`path`、`html_url`、`download_url`。
 
-```powershell
+- 获取文件正文时使用 raw 链接：
+
+```bash
 curl.exe -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path-to-file>"
 ```
 
-### 3.5 docs 路径拼接规则
+不要依赖 GitHub HTML 页面渲染结果作为文件正文。
 
-在读取完 `agent_router.md` 后，agent 应重点识别这些信息：
+### 3.6 docs 路径拼接原则
+
+在按目录定位时，重点识别这些信息：
 
 - docs 实际根目录在哪里
 - 是否存在多语言目录
-- 是否存在逻辑名称到真实文件路径的映射
+- 逻辑名称（如 `quick_start`、`user_guide`）对应的真实子目录
 - 文档入口是 `README.md`、`index.md` 还是其他文件
-- 某些主题文档是否需要从别名跳转到真实路径
 
 最终原则：
 
-1. 先看 router，再决定路径
-2. 路径以 router 为准，而不是以仓库默认 `docs/` 习惯为准
-3. 如果 router 已明确给出入口或映射，直接按其规则拼路径
+1. 先列目录，再决定路径；路径以列表结果为准，而不是以仓库默认习惯为准
+2. 不确定时给出已确认的目录片段，不要硬造不存在的路径
 
 ## 4. 标准操作流程
 
 1. 识别用户给的是 GitHub 文件页链接、raw 链接，还是“读取某仓 docs”的意图
 2. 从链接或上下文中提取 `<owner>`、`<repo>`、`<ref>`、目标路径或目标主题
-3. 如果目标属于 docs 体系，先构造并读取 `agent_router.md` 的 raw 链接
-4. 根据 `agent_router.md` 推导真实文档路径
-5. 将真实路径转换为 raw 链接
+3. 如果目标属于 docs 体系，先列出仓库根目录定位真实文档目录（可选：根目录存在 `agent_router.md` 时先读它加速）
+4. 按真实目录结构定位目标文件
+5. 将最终路径转换为 raw 链接
 6. 使用 `curl` 获取内容
 7. 将结果返回给用户：
    - 用户想快速了解内容时，优先给摘要和关键片段
@@ -140,94 +130,96 @@ curl.exe -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path-to-fil
 
 ## 5. 推荐命令模板
 
-### 5.1 先读取 router
+### 5.1 列出仓库根目录
 
-```powershell
-curl.exe -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/agent_router.md"
+```bash
+curl.exe -s -L "https://api.github.com/repos/<owner>/<repo>/contents/?ref=<ref>"
 ```
 
-### 5.2 再读取真实文档
+### 5.2 列出文档子目录
 
-```powershell
-curl.exe -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<actual-doc-path>"
+```bash
+curl.exe -s -L "https://api.github.com/repos/<owner>/<repo>/contents/docs/zh?ref=<ref>"
 ```
 
-### 5.3 直接读取普通文件
+### 5.3 读取真实文档或普通文件
 
-```powershell
-curl.exe -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path-to-file>"
+```bash
+curl.exe -L "https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<actual-path>"
 ```
 
-## 6. 示例
+## 6. 示例（Ascend 官方仓，均真实存在）
 
-### 示例 1：标准 GitHub 文件页
+### 示例 1：标准 GitHub 文件页转 raw
 
 输入：
 
 ```text
-https://github.com/actioncloud/github-raw-url/blob/master/index.js
+https://github.com/Ascend/msprof/blob/master/README.md
 ```
 
 转换后：
 
 ```text
-https://raw.githubusercontent.com/actioncloud/github-raw-url/master/index.js
+https://raw.githubusercontent.com/Ascend/msprof/master/README.md
 ```
 
 再使用：
 
-```powershell
-curl.exe -L "https://raw.githubusercontent.com/actioncloud/github-raw-url/master/index.js"
+```bash
+curl.exe -L "https://raw.githubusercontent.com/Ascend/msprof/master/README.md"
 ```
 
-### 示例 2：读取 docs 前先读 router
+### 示例 2：读取某仓库的文档（按真实 docs 目录定位）
 
 输入：
 
 ```text
-请读取 https://github.com/kali20gakki/msprof/blob/master/docs/xxx.md
+请读取 Ascend/msprof 仓库中关于交付文件字段含义的说明文档
 ```
 
 正确流程：
 
-1. 先读取：
+1. 列出根目录：`https://api.github.com/repos/Ascend/msprof/contents/?ref=master`，确认存在 `docs/`、`README.md` 等
+2. 列出 `docs/zh/user_guide`：确认真实文件名（以列表结果为准），例如存在 `profile_data_file_references.md`
+3. 读取真实路径：
+
+```bash
+curl.exe -L "https://raw.githubusercontent.com/Ascend/msprof/master/docs/zh/user_guide/profile_data_file_references.md"
+```
+
+说明：`Ascend/msprof` 根目录存在 `agent_router.md`，读取时可先读它作为路径提示；但流程不以它为前提，按 §3.3/§3.4 处理。
+
+### 示例 3：没有 `agent_router.md` 的仓库
+
+输入：
 
 ```text
-https://raw.githubusercontent.com/kali20gakki/msprof/master/agent_router.md
+请读取 Ascend/community 仓库的文档目录结构
 ```
 
-2. 根据 router 判断 `xxx.md` 的真实位置
-3. 再对真实路径执行：
+正确流程：直接列出根目录并逐层确认文档目录，例如：
 
-```powershell
-curl.exe -L "https://raw.githubusercontent.com/kali20gakki/msprof/master/<actual-doc-path>"
+```bash
+curl.exe -s -L "https://api.github.com/repos/Ascend/community/contents/?ref=master"
 ```
 
-### 示例 3：用户只说“帮我看某仓库的某篇文档”
-
-如果用户只给了仓库和主题，没有给出最终文件路径，先读该仓库的 `agent_router.md`，再根据其中的入口和映射规则推导实际文档位置，而不是直接猜 `docs/<topic>.md`。
+然后按列表结果继续定位。不要假设该仓存在 `agent_router.md`，也不要以某个固定 `docs/` 路径直接拼接。
 
 ## 7. 错误处理与约束
 
 - 如果链接不是 GitHub 文件页或 raw 文件链接，要明确告知该 URL 不符合本技能处理模式
-- 如果 `agent_router.md` 返回 404：
+- 如果列表或 raw 返回 404：
   - 先确认仓库、`ref` 是否正确
-  - 如果确认无 router，可退化为直接按原始路径转换 raw 链接
-  - 退化时要说明“未发现 `agent_router.md`，因此按直接路径尝试读取”
-- 如果 router 存在，但无法从中推导出目标文档路径：
-  - 明确说明缺少哪类映射信息
-  - 不要假装已经确认真实路径
-- 如果获取结果返回 404，优先考虑：
-  - 路径错误
-  - `ref` 不存在
-  - router 指向的路径已变化
-  - 仓库或文件为私有资源
+  - 若目录确实不存在，报告已确认的目录列表片段，不要硬造路径
+- 如果 `agent_router.md` 返回 404：说明“未发现 router”，回到真实 docs 目录结构继续定位，不要中断
 - 如果返回的是 HTML 而不是文本，说明抓取方式不对，优先检查是否误用了 GitHub 页面链接而非 raw 链接
 - 如果目标内容明显为二进制或体积过大，不要强行按纯文本展开；应告知用户文件类型，并优先返回链接或简要说明
+- Contents API 未认证时有访问限额，尽量少列表、多直接读取已知文件
 
 ## 8. 输出建议
 
 - 如果用户是为了阅读或分析文件，优先提炼关键内容，而不是机械粘贴全文
 - 如果用户明确要求 raw content 或原文，再按需返回完整文本
-- 如果读取 docs 时经过了 `agent_router.md`，可以顺带说明最终路径是如何由 router 推导出来的
+- 读取 docs 时可以顺带说明最终路径是如何按目录结构定位出来的
 - 分析代码或配置时，可顺带说明关键函数、入口、配置项或用途
