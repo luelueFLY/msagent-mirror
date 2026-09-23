@@ -71,6 +71,7 @@ zh/development_guide/version-and-compatibility
 zh/development_guide/arch_overview
 zh/development_guide/readthedocs-local-build
 zh/development_guide/design/msagent_design
+zh/development_guide/design/permission_approval_design
 zh/development_guide/design/msprof_mcp_design
 zh/development_guide/design/npu_snapshot_analysis
 ```
