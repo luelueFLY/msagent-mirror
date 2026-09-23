@@ -309,7 +309,7 @@ def _add_runtime_options(parser: argparse.ArgumentParser, *, include_timer: bool
     )
     parser.add_argument(
         "--execute-approval-mode",
-        choices=["safe", "convenience"],
+        choices=["manual", "auto"],
         default=None,
         help="Preset shell execute approval mode for non-interactive runs",
     )
