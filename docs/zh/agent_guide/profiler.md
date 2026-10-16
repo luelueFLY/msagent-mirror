@@ -10,8 +10,8 @@
 
 ## 2. 核心能力
 
-- 集群快慢卡、慢节点与负载不均衡分析 <sup>Beta</sup>
-- 通信瓶颈、算子热点、Host 下发与调度问题定位 <sup>Beta</sup>
+- 集群快慢卡、慢节点与负载不均衡分析
+- 通信瓶颈、算子热点、Host 下发与调度问题定位
 - 基于 DB / CSV / Trace 等交付件做结构化分析与导出 <sup>Beta</sup>
 - Profiling 数据检查与数据质量确认 <sup>Beta</sup>
 - MFU 计算、公式说明与结果解释 <sup>Beta</sup>
