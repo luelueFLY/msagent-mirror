@@ -38,6 +38,7 @@ zh/user_guide/configuration-and-extension
 zh/user_guide/context-compaction-guide
 zh/user_guide/document-ux-review
 zh/user_guide/integration-guide
+zh/user_guide/permission-approval-guide
 zh/user_guide/retry-middleware-guide
 zh/user_guide/usemap
 ```
@@ -71,7 +72,6 @@ zh/development_guide/version-and-compatibility
 zh/development_guide/arch_overview
 zh/development_guide/readthedocs-local-build
 zh/development_guide/design/msagent_design
-zh/development_guide/design/permission_approval_design
 zh/development_guide/design/msprof_mcp_design
 zh/development_guide/design/npu_snapshot_analysis
 ```

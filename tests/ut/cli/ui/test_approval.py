@@ -19,8 +19,13 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+from prompt_toolkit.application import create_app_session
+from prompt_toolkit.input import DummyInput
 from prompt_toolkit.layout.containers import HSplit
+from prompt_toolkit.output import DummyOutput
 
+from msagent.cli.ui import approval
 from msagent.cli.ui.approval import (
     ApprovalChoice,
     ApprovalMenu,
@@ -99,7 +104,7 @@ def test_menu_renders_metadata_and_notes_with_distinct_styles() -> None:
         context=_context(),
         title="execute Requires Approval",
         details="python3 -c \"print(1)\"",
-        metadata=["Mode: safe", "Policy: opaque"],
+        metadata=["Mode: manual", "Policy: opaque"],
         notes=["Note: an allow rule applies to Python inline code in this project."],
         options=["approve", "reject"],
     )
@@ -107,7 +112,7 @@ def test_menu_renders_metadata_and_notes_with_distinct_styles() -> None:
     fragments = menu._format_menu()
 
     assert ("class:approval.details", 'python3 -c "print(1)"') in fragments
-    assert ("class:approval.metadata", "Mode: safe") in fragments
+    assert ("class:approval.metadata", "Mode: manual") in fragments
     assert any(style == "class:approval.note" and text.startswith("Note:") for style, text in fragments)
 
 
@@ -129,8 +134,40 @@ def test_application_can_be_constructed() -> None:
         options=["approve", "reject"],
     )
 
-    app = menu.create_application()
+    with create_app_session(input=DummyInput(), output=DummyOutput()):
+        app = menu.create_application()
 
     assert isinstance(app.layout.container, HSplit)
     assert menu._choice(1) == ApprovalChoice("reject")
     assert menu.menu_window.wrap_lines()
+
+
+@pytest.mark.asyncio
+async def test_approval_cancels_when_console_buffer_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    menu = ApprovalMenu(context=_context(), title="Approval", details="echo ok", options=["approve", "reject"])
+    messages: list[str] = []
+    errors: list[str] = []
+
+    def fail():
+        raise approval.NoConsoleScreenBufferError("missing console")
+
+    monkeypatch.setattr(menu, "create_application", fail)
+    monkeypatch.setattr(approval.console, "print_warning", messages.append)
+    monkeypatch.setattr(approval.logger, "exception", errors.append)
+
+    assert await menu.run_async() is None
+    assert messages == ["Approval cancelled because the terminal has no console screen buffer."]
+    assert len(errors) == 1
+
+
+@pytest.mark.asyncio
+async def test_approval_propagates_unexpected_initialization_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    menu = ApprovalMenu(context=_context(), title="Approval", details="echo ok", options=["approve", "reject"])
+
+    def fail():
+        raise ValueError("invalid layout")
+
+    monkeypatch.setattr(approval, "Application", lambda **kwargs: fail())
+
+    with pytest.raises(ValueError, match="invalid layout"):
+        await menu.run_async()

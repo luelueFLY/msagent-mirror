@@ -41,7 +41,7 @@ class PermissionsHandler:
         command = args[0].lower()
         if command == "clear-project":
             self._clear_project_rules()
-            console.print_success("Cleared project approval rules.")
+            console.print_success("Cleared project approval rules. The approval mode is retained.")
             console.print("")
             return
 

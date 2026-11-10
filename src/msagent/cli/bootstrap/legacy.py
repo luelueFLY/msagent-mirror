@@ -82,7 +82,7 @@ Optional arguments:
       --timer                              Enable startup timing.
   -am, --approval-mode {semi-active,active,aggressive}
                                            Tool approval mode [default: active]
-      --execute-approval-mode {safe,convenience}
+      --execute-approval-mode {manual,auto}
                                            Preset shell execute approval mode for non-interactive runs.
       --trace-jsonl <FILE>                 Write JSONL trace events to this file.
 

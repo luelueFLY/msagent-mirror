@@ -29,12 +29,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 DecisionType = Literal["approve", "edit", "reject"]
 ToolDecision = Literal["ask", "always_approve", "always_reject"]
 ExecuteApprovalMode = Literal["auto", "manual"]
-_LEGACY_EXECUTE_APPROVAL_MODES = {"convenience": "auto", "safe": "manual"}
 
 
 def _stable_rule_id(kind: str, payload: dict[str, Any]) -> str:
@@ -186,12 +185,6 @@ class ToolApprovalConfig(BaseModel):
     script_rules: list[ProjectScriptRule] = Field(default_factory=list)
     external_directories: list[ExternalDirectoryRule] = Field(default_factory=list)
     execute_approval_mode: ExecuteApprovalMode | None = None
-
-    @field_validator("execute_approval_mode", mode="before")
-    @classmethod
-    def _normalize_legacy_execute_approval_mode(cls, value: Any) -> Any:
-        """Accept old persisted names while writing the Manual/Auto names going forward."""
-        return _LEGACY_EXECUTE_APPROVAL_MODES.get(value, value)
 
     def to_interrupt_on_payload(self) -> dict[str, bool | dict[str, Any]] | None:
         """Return interrupt_on payload compatible with deepagents create_deep_agent."""

@@ -52,11 +52,7 @@ echo 2 > /proc/sys/kernel/randomize_va_space
 
 ## 命令审批与授权风险
 
-`msagent` 支持 Manual Mode 和 Auto Mode 两种 shell 命令审批模式，可通过 `/permissions` 查看或切换。Manual Mode 下，可识别的只读命令自动执行，其他正常命令需要确认；Auto Mode 下，正常命令、直接脚本和内联代码默认执行。两种模式下，明确危险命令仍需要确认，禁止命令会直接拒绝，首次访问未授权外部目录也会先请求目录授权。
-
-`Approve` / `Reject` 仅本次生效。Always allow 规则会按当前 Project 持久化到 `~/.msagent/state/projects/<project-id>/config.approval.json`，包括精确命令、命令族、项目脚本和外部目录。项目脚本授权按解释器和脚本路径匹配，忽略参数且会在脚本后续内容变更时继续生效；外部目录授权覆盖该目录及其子目录。用户应谨慎授权删除文件、修改 Git 历史、推送代码、提升权限、安装依赖、执行远程脚本、访问网络或处理敏感数据的命令，并自行承担已授权命令的执行风险。
-
-命令分类和外部目录授权都不是安全边界。命令可以通过解释器、脚本、别名、环境变量、命令替换或其他包装方式间接执行操作；获准进程仍具有宿主用户本来的权限。尤其在 Auto Mode 下，用户应确认工作流和可执行代码可信。
+用户应自行承担已授权命令的执行风险。审批设置、授权范围和运行边界见[权限审批使用指南](../user_guide/permission-approval-guide.md)。
 
 当前版本的 `msagent` 不会在用户工作目录下生成 `.msagent/`，也不会为了忽略这些文件而自动修改 `.git/info/exclude` 或 `.gitignore`。如需配置 Git 忽略规则，请由用户自行按需设置。
 

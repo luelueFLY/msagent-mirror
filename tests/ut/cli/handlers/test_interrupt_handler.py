@@ -33,7 +33,6 @@ def _build_session(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(
         context=SimpleNamespace(working_dir=tmp_path, state_dir=tmp_path),
         prompt=SimpleNamespace(mode_change_callback=None),
-        approval_session_rules=[],
         execute_approval_mode=None,
     )
 
@@ -56,10 +55,10 @@ def _tool_payload(name: str, args: dict[str, object]) -> dict[str, object]:
 @pytest.mark.parametrize(
     ("mode", "command", "prompt_choice", "expected", "interacted"),
     [
-        ("convenience", 'python -c "print(1)"', "reject", {"decisions": [{"type": "approve"}]}, False),
-        ("safe", 'python -c "print(1)"', "approve", {"decisions": [{"type": "approve"}]}, True),
-        ("safe", "ls -la", "reject", {"decisions": [{"type": "approve"}]}, False),
-        ("convenience", "rm -rf /tmp/demo", "reject", {"decisions": [{"type": "reject"}]}, True),
+        ("auto", 'python -c "print(1)"', "reject", {"decisions": [{"type": "approve"}]}, False),
+        ("manual", 'python -c "print(1)"', "approve", {"decisions": [{"type": "approve"}]}, True),
+        ("manual", "ls -la", "reject", {"decisions": [{"type": "approve"}]}, False),
+        ("auto", "rm -rf /tmp/demo", "reject", {"decisions": [{"type": "reject"}]}, True),
     ],
 )
 async def test_execute_mode_default_decisions(
@@ -104,7 +103,7 @@ async def test_execute_mode_default_decisions(
 )
 def test_delete_commands_are_dangerous(tmp_path: Path, command: str) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(tool_name="execute", tool_args={"command": command})
@@ -116,7 +115,7 @@ def test_delete_commands_are_dangerous(tmp_path: Path, command: str) -> None:
 
 def test_compound_whitelist_commands_auto_approve(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(tool_name="execute", tool_args={"command": "pwd && ls -la"})
@@ -128,7 +127,7 @@ def test_compound_whitelist_commands_auto_approve(tmp_path: Path) -> None:
 
 def test_readonly_pipeline_and_version_probe_auto_approve(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(
@@ -177,7 +176,7 @@ def test_output_redirection_prevents_readonly_classification(tmp_path: Path) -> 
 
 def test_rm_substring_does_not_match_delete_blacklist(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(
@@ -263,7 +262,7 @@ def test_non_readonly_shell_chain_does_not_recognize_project_script(tmp_path: Pa
 )
 def test_wrapped_commands_auto_approve_in_auto_mode(tmp_path: Path, command: str) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(tool_name="execute", tool_args={"command": command})
@@ -286,7 +285,7 @@ def test_python_stdin_and_dash_c_share_inline_code_family(tmp_path: Path) -> Non
 
 def test_catastrophic_delete_is_forbidden(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(tool_name="execute", tool_args={"command": "rm -rf /"})
@@ -298,7 +297,7 @@ def test_catastrophic_delete_is_forbidden(tmp_path: Path) -> None:
 
 def test_dangerous_compound_segment_overrides_opaque_family(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(
@@ -312,7 +311,7 @@ def test_dangerous_compound_segment_overrides_opaque_family(tmp_path: Path) -> N
 @pytest.mark.asyncio
 async def test_forbidden_command_is_rejected_without_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     async def _unexpected_prompt(**_kwargs):
@@ -327,7 +326,7 @@ async def test_forbidden_command_is_rejected_without_prompt(tmp_path: Path, monk
 
 def test_whitelist_command_in_compound_execute_does_not_auto_approve(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
 
     profile = handler._classify_command(
@@ -354,7 +353,7 @@ def test_whitelist_command_in_compound_execute_does_not_auto_approve(tmp_path: P
         ),
     ],
 )
-async def test_safe_mode_always_rules_persist_to_project_file(
+async def test_manual_mode_always_rules_persist_to_project_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     choice: str,
@@ -362,7 +361,7 @@ async def test_safe_mode_always_rules_persist_to_project_file(
     expected_rule: str,
 ) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
 
     async def _prompt(**_kwargs):
@@ -376,7 +375,6 @@ async def test_safe_mode_always_rules_persist_to_project_file(
 
     assert result == expected_result
     assert user_interacted is True
-    assert session.approval_session_rules == []
     assert config.resolve_decision("execute", {"command": "python script.py"}) == expected_rule
 
 
@@ -408,7 +406,7 @@ def test_stale_session_snapshots_merge_project_rules(tmp_path: Path) -> None:
 
 def test_dangerous_commands_cannot_be_remembered(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
     profile = handler._classify_command(tool_name="execute", tool_args={"command": "rm /tmp/demo"})
 
@@ -420,7 +418,7 @@ def test_dangerous_commands_cannot_be_remembered(tmp_path: Path) -> None:
 
 def test_opaque_commands_offer_only_once_project_family_or_reject(tmp_path: Path) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
     profile = handler._classify_command(tool_name="execute", tool_args={"command": 'python3 -c "print(1)"'})
 
@@ -450,7 +448,7 @@ async def test_project_rules_do_not_auto_approve_dangerous_execute(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
     project_config = ToolApprovalConfig(decision_rules=[])
     project_config.prepend_decision_rule(
@@ -578,23 +576,6 @@ async def test_external_script_needs_directory_grant_before_script_rule(
     assert ALWAYS_ALLOW_PROJECT_SCRIPT in captured["options"]
 
 
-def test_legacy_python_dash_c_family_rule_covers_python_stdin(tmp_path: Path) -> None:
-    handler = InterruptHandler(_build_session(tmp_path))
-    config = ToolApprovalConfig()
-    config.prepend_family_rule(family="python3 -c", decision="always_approve")
-    profile = handler._classify_command(tool_name="execute", tool_args={"command": "python3 - <<'EOF'\nprint(1)\nEOF"})
-
-    assert (
-        handler._resolve_decision(
-            approval_config=config,
-            tool_name="execute",
-            tool_args={"command": "python3 - <<'EOF'\nprint(1)\nEOF"},
-            command_profile=profile,
-        )
-        == "always_approve"
-    )
-
-
 @pytest.mark.asyncio
 async def test_external_workdir_can_be_allowed_for_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = tmp_path / "project"
@@ -605,7 +586,7 @@ async def test_external_workdir_can_be_allowed_for_project(tmp_path: Path, monke
     nested.mkdir(parents=True)
     session = _build_session(tmp_path)
     session.context.working_dir = project
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
 
     async def _allow_external(**kwargs):
@@ -617,7 +598,7 @@ async def test_external_workdir_can_be_allowed_for_project(tmp_path: Path, monke
 
     restarted_session = _build_session(tmp_path)
     restarted_session.context.working_dir = project
-    restarted_session.execute_approval_mode = "convenience"
+    restarted_session.execute_approval_mode = "auto"
     restarted_handler = InterruptHandler(restarted_session)
 
     async def _unexpected_external_prompt(**_kwargs):
@@ -684,7 +665,7 @@ async def test_escaping_relative_command_argument_triggers_external_directory_pr
     external.mkdir()
     session = _build_session(tmp_path)
     session.context.working_dir = project
-    session.execute_approval_mode = "convenience"
+    session.execute_approval_mode = "auto"
     handler = InterruptHandler(session)
     prompted: list[Path] = []
 
@@ -701,11 +682,50 @@ async def test_escaping_relative_command_argument_triggers_external_directory_pr
 
 
 @pytest.mark.asyncio
-async def test_safe_mode_approval_menu_includes_switch_and_project_note(
+@pytest.mark.parametrize(
+    ("command", "tool_args", "expected_path"),
+    [
+        (r'type "C:\outside files\file.txt"', {}, r"C:\outside files\file.txt"),
+        (r"type \\server\share\file.txt", {}, r"\\server\share\file.txt"),
+        (r"type \outside\file.txt", {}, r"\outside\file.txt"),
+        (r"cd C:\outside", {}, r"C:\outside"),
+        ("dir", {"cwd": r"C:\outside"}, r"C:\outside"),
+    ],
+)
+async def test_windows_paths_trigger_external_directory_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str, tool_args: dict[str, str], expected_path: str
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside"
+    session = _build_session(project)
+    session.execute_approval_mode = "auto"
+    handler = InterruptHandler(session)
+    monkeypatch.setattr(interrupts_module, "sys", SimpleNamespace(platform="win32"))
+
+    def resolve_path(value: str, *, base: Path, directory: bool) -> Path:
+        assert value == expected_path
+        return outside
+
+    async def reject_external(*, directory: Path) -> str:
+        assert directory == outside
+        return "reject"
+
+    monkeypatch.setattr(handler, "_resolve_path", resolve_path)
+    monkeypatch.setattr(handler, "_prompt_external_directory", reject_external)
+
+    result, interacted = await handler._get_hitl_decisions(_execute_payload(command, **tool_args))
+
+    assert result == {"decisions": [{"type": "reject", "message": "External directory access was rejected."}]}
+    assert interacted
+
+
+@pytest.mark.asyncio
+async def test_manual_mode_approval_menu_includes_switch_and_project_note(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
     captured: dict[str, object] = {}
 
@@ -744,7 +764,7 @@ async def test_safe_mode_approval_menu_includes_switch_and_project_note(
 @pytest.mark.asyncio
 async def test_hitl_includes_rejection_feedback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
 
     async def _reject_with_feedback(**_kwargs):
@@ -825,11 +845,11 @@ def test_project_approval_path_requires_state_dir(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_switch_to_convenience_updates_mode_and_approves_current_command(
+async def test_switch_to_auto_updates_mode_and_approves_current_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     handler = InterruptHandler(session)
 
     async def _prompt(**_kwargs):
@@ -848,7 +868,7 @@ async def test_switch_to_convenience_updates_mode_and_approves_current_command(
 async def test_handle_records_audit_only_when_user_prompted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     recorded: list[dict[str, object]] = []
     session = _build_session(tmp_path)
-    session.execute_approval_mode = "safe"
+    session.execute_approval_mode = "manual"
     session.audit_writer = SimpleNamespace(
         enabled=True,
         emit_user_response=lambda **kwargs: recorded.append(kwargs),

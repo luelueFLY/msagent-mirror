@@ -60,29 +60,7 @@
 
 ## 4. 命令审批与权限管理
 
-`msagent` 首次执行 shell 命令时会要求选择审批模式；非交互或自动化场景可用启动参数预设：
-
-```bash
-msagent --execute-approval-mode manual "运行需要逐条确认的任务"
-msagent --execute-approval-mode auto "运行可信自动化任务"
-```
-
-未传 `--execute-approval-mode` 时，交互式会话会在首次执行 shell 命令时提示用户选择并保存模式。模式和项目级授权保存于 `~/.msagent/state/projects/<project-id>/config.approval.json`，在同一项目的新进程和恢复的 thread 中继续生效。
-
-Manual Mode 下，可识别的只读命令自动执行；运行代码或其他普通命令会请求确认。Auto Mode 下，正常命令、直接脚本和内联代码默认执行。两种模式下，明确危险命令仍需每次确认，禁止命令会直接拒绝；首次访问未授权外部目录也始终先询问目录权限。
-
-审批框中的 Always allow 可保存四类项目规则：精确命令、内联代码或包装命令的命令族、解释器加脚本路径的项目脚本，以及外部目录及其子目录。`Approve` / `Reject` 仅作用于当前调用。项目脚本规则忽略脚本参数，并允许脚本内容在后续变更后继续执行；应仅用于用户愿意持续信任的脚本。
-
-`/permissions` 是权限管理的唯一入口：
-
-- `/permissions`：查看当前模式及项目级规则。
-- `/permissions mode manual`：切换到 Manual Mode。
-- `/permissions mode auto`：切换到 Auto Mode。
-- `/permissions remove <rule-id>`：删除一条项目规则。
-- `/permissions clear-project`：清空当前项目的持久化审批规则。
-- `/permissions explain <command>`：只分析命令的内部分类和最终决策，不执行命令。
-
-命令分类只是一种启发式保护，不是安全边界。获准的解释器、脚本、别名、环境变量、命令替换及其他包装形式仍可间接执行敏感操作；Auto Mode 和项目级 Always allow 应仅用于用户确认可信的工作流。详细策略见[Shell 权限审批设计](../development_guide/design/permission_approval_design.md)。
+审批模式、触发场景和项目授权管理见[权限审批使用指南](permission-approval-guide.md)。
 
 ## 5. 配置读取方式
 

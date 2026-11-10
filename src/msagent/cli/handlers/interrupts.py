@@ -21,24 +21,14 @@ from __future__ import annotations
 import re
 import shlex
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING, Any, cast
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.keys import Keys
-from prompt_toolkit.shortcuts import CompleteStyle
 from typing_extensions import NotRequired, TypedDict
 
+from msagent.audit.user_interaction import build_user_response_fields
 from msagent.cli.theme import console
 from msagent.cli.ui.approval import ApprovalChoice, ApprovalMenu, format_approval_details
-from msagent.cli.ui.shared import (
-    build_agent_prompt,
-    create_bottom_toolbar,
-    create_prompt_style,
-)
-from msagent.audit.user_interaction import build_user_response_fields
 from msagent.configs import ExecuteApprovalMode, ToolApprovalConfig
 from msagent.core.logging import get_logger
 from msagent.middlewares.approval import InterruptPayload
@@ -183,7 +173,7 @@ class InterruptHandler:
         writer.emit_user_response(**fields)
 
     async def _get_choice(self, interrupt: Interrupt) -> tuple[Any, bool]:
-        """Choice selector with tab completion and Enter key support.
+        """Resolve an interrupt and track whether it prompted the user.
 
         Returns:
             Tuple of resume value and whether the user was prompted interactively.
@@ -385,7 +375,7 @@ class InterruptHandler:
         metadata: list[str] = []
         notes: list[str] = []
         if tool_name == "execute":
-            metadata.append(f"Mode: {self._get_execute_approval_mode() or 'unset'}")
+            metadata.append(f"Mode: {self.session.execute_approval_mode or 'unset'}")
         if "always_approve" in options:
             notes.append(
                 self._always_rule_note(
@@ -461,13 +451,9 @@ class InterruptHandler:
                 return persisted_script
 
         if command_profile["category"] == "opaque":
-            for family in self._family_rule_candidates(command_profile.get("family")):
-                persisted_family = approval_config.resolve_family_decision(family)
-                if persisted_family in {"always_approve", "always_reject"}:
-                    return persisted_family
-            legacy_exact = approval_config.resolve_decision(tool_name, tool_args)
-            if legacy_exact in {"always_approve", "always_reject"}:
-                return legacy_exact
+            persisted_family = approval_config.resolve_family_decision(command_profile.get("family"))
+            if persisted_family in {"always_approve", "always_reject"}:
+                return persisted_family
             return command_profile["default_decision"]
 
         if command_profile["category"] == "readonly":
@@ -487,7 +473,7 @@ class InterruptHandler:
         """Restore the project shell mode or prompt once and persist it."""
         if tool_name != "execute":
             return False
-        if self._get_execute_approval_mode() is not None:
+        if self.session.execute_approval_mode is not None:
             return False
 
         if approval_config.execute_approval_mode is not None:
@@ -522,14 +508,6 @@ class InterruptHandler:
             return "manual"
         if selected == "Auto Mode":
             return "auto"
-        return None
-
-    def _get_execute_approval_mode(self) -> ExecuteApprovalMode | None:
-        mode = getattr(self.session, "execute_approval_mode", None)
-        legacy_modes = {"convenience": "auto", "safe": "manual"}
-        mode = legacy_modes.get(mode, mode)
-        if mode in {"auto", "manual"}:
-            return cast(ExecuteApprovalMode, mode)
         return None
 
     def _set_execute_approval_mode(
@@ -600,7 +578,7 @@ class InterruptHandler:
                 opaque_options.extend(["approve", "always_approve"])
             if "reject" in allowed:
                 opaque_options.append("reject")
-            if self._get_execute_approval_mode() == "manual":
+            if self.session.execute_approval_mode == "manual":
                 opaque_options.append(SWITCH_TO_AUTO)
             return opaque_options
         if self._is_project_script_eligible(command_profile, approval_config):
@@ -609,14 +587,14 @@ class InterruptHandler:
                 script_options.extend(["approve", ALWAYS_ALLOW_PROJECT_SCRIPT])
             if "reject" in allowed:
                 script_options.extend(["reject", "always_reject"])
-            if self._get_execute_approval_mode() == "manual":
+            if self.session.execute_approval_mode == "manual":
                 script_options.append(SWITCH_TO_AUTO)
             return script_options
         if "approve" in allowed:
             options.append("always_approve")
         if category == "ordinary" and "reject" in allowed:
             options.append("always_reject")
-        if category == "ordinary" and self._get_execute_approval_mode() == "manual":
+        if category == "ordinary" and self.session.execute_approval_mode == "manual":
             options.append(SWITCH_TO_AUTO)
         return list(dict.fromkeys(options))
 
@@ -645,7 +623,7 @@ class InterruptHandler:
         if opaque_family:
             return {
                 "category": "opaque",
-                "default_decision": "approve" if self._get_execute_approval_mode() == "auto" else "ask",
+                "default_decision": "approve" if self.session.execute_approval_mode == "auto" else "ask",
                 "persistence_scope": "project",
                 "family": opaque_family,
             }
@@ -660,8 +638,8 @@ class InterruptHandler:
             }
         profile: CommandRiskLevel = {
             "category": "ordinary",
-            "default_decision": "approve" if self._get_execute_approval_mode() == "auto" else "ask",
-            "persistence_scope": "none" if self._get_execute_approval_mode() == "auto" else "project",
+            "default_decision": "approve" if self.session.execute_approval_mode == "auto" else "ask",
+            "persistence_scope": "none" if self.session.execute_approval_mode == "auto" else "project",
         }
         script = self._direct_script_launch(command_segments)
         if script:
@@ -772,17 +750,6 @@ class InterruptHandler:
             return "shell substitution"
         return None
 
-    @staticmethod
-    def _family_rule_candidates(family: str | None) -> tuple[str, ...]:
-        """Return current and compatible persisted family-rule names."""
-        if not family:
-            return ()
-        candidates = [family]
-        if family.endswith(" inline code"):
-            executable = family.removesuffix(" inline code")
-            candidates.append(f"{executable} -c")
-        return tuple(candidates)
-
     def _external_directories_requiring_approval(
         self,
         *,
@@ -803,7 +770,13 @@ class InterruptHandler:
         if tool_name == "execute":
             for segment in self._split_command_segments(self._extract_execute_command(tool_args)):
                 try:
-                    tokens = shlex.split(segment, posix=True)
+                    lexer = shlex.shlex(segment, posix=True)
+                    lexer.whitespace_split = True
+                    lexer.commenters = ""
+                    if sys.platform == "win32":
+                        # Windows paths use backslashes as separators, not shell escapes.
+                        lexer.escape = ""
+                    tokens = list(lexer)
                 except ValueError:
                     continue
                 if len(tokens) >= 2 and tokens[0].lower() == "cd":
@@ -811,7 +784,8 @@ class InterruptHandler:
                     continue
                 if inspect_command_paths:
                     for token in tokens[1:]:
-                        if token.startswith(("/", "~/", "../", "..\\")):
+                        windows_path = sys.platform == "win32" and PureWindowsPath(token).anchor
+                        if windows_path or token.startswith(("/", "~/", "../", "..\\")):
                             candidates.append(self._resolve_path(token, base=base, directory=False))
         else:
             for key in ("path", "file_path", "directory", "root"):
@@ -1004,124 +978,3 @@ class InterruptHandler:
             option_labels=option_labels,
         )
         return await menu.run_async()
-
-    async def _prompt_from_options(
-        self,
-        *,
-        question: str,
-        options: list[str],
-    ) -> str | None:
-        """Prompt a choice from options with tab completion and Enter key support."""
-        # Measure actual rendered lines by capturing output
-        with console.capture() as capture:
-            console.print(f"[accent]{question}[/accent]")
-        rendered_text = capture.get()
-        # Count actual newlines in the rendered output (not stripping)
-        # This gives us the exact number of line breaks
-        lines_to_clear: int = rendered_text.count("\n")
-
-        # Now print for real
-        console.print(f"[accent]{question}[/accent]")
-
-        # Get context and create shared UI components
-        context = self.session.context
-
-        # Create separate prompt session with shared styling and mode cycling
-        style = create_prompt_style(context, bash_mode=False)
-
-        # Create key bindings for mode cycling
-        kb = KeyBindings()
-
-        @kb.add(Keys.BackTab)
-        def _(event):
-            """Shift-Tab: Cycle approval mode."""
-            if self.session.prompt.mode_change_callback:
-                self.session.prompt.mode_change_callback()
-                # Refresh style after mode change
-                interrupt_session.style = create_prompt_style(context, bash_mode=False)
-                event.app.invalidate()
-
-        interrupt_session: PromptSession[str] = PromptSession(
-            completer=WordCompleter(options, ignore_case=True),
-            complete_style=CompleteStyle.COLUMN,
-            complete_while_typing=False,
-            style=style,
-            key_bindings=kb,
-            bottom_toolbar=lambda: create_bottom_toolbar(
-                context,
-                context.working_dir,
-                bash_mode=False,
-            ),
-        )
-
-        try:
-            while True:
-                try:
-
-                    def pre_run():
-                        interrupt_session.default_buffer.start_completion(select_first=False)
-
-                    result = await interrupt_session.prompt_async(
-                        [
-                            ("class:prompt", build_agent_prompt(context)),
-                        ],
-                        pre_run=pre_run,
-                    )
-
-                    if not result.strip():
-                        console.print_error("Please make a choice")
-                        lines_to_clear += 2  # prompt + warning
-                        continue
-
-                    # Validate the result
-                    result_lower = result.strip().lower()
-
-                    # Check if matches option name (case-insensitive)
-                    matched_option = None
-                    for option in options:
-                        if option.lower() == result_lower:
-                            matched_option = option
-                            break
-
-                    if matched_option:
-                        # Clear all interrupt-related lines
-                        for __ in range(lines_to_clear + 1):  # +1 for the final prompt
-                            sys.stdout.write("\033[F")
-                            sys.stdout.write("\033[K")
-                        sys.stdout.flush()
-                        return matched_option
-
-                    # Check partial matches
-                    matches = [o for o in options if o.lower().startswith(result_lower)]
-                    if len(matches) == 1:
-                        # Clear all interrupt-related lines
-                        for __ in range(lines_to_clear + 1):  # +1 for the final prompt
-                            sys.stdout.write("\033[F")
-                            sys.stdout.write("\033[K")
-                        sys.stdout.flush()
-                        return matches[0]
-                    elif len(matches) > 1:
-                        console.print_error(f"Ambiguous choice. Options: {', '.join(matches)}")
-                        lines_to_clear += 2  # prompt + warning
-                        continue
-
-                    console.print_error(f"Invalid choice '{result}'. Please try again.")
-                    lines_to_clear += 2  # prompt + warning
-
-                except KeyboardInterrupt:
-                    # Clear all interrupt-related lines including the current prompt
-                    for __ in range(lines_to_clear + 1):  # +1 for current prompt
-                        sys.stdout.write("\033[F")
-                        sys.stdout.write("\033[K")
-                    sys.stdout.flush()
-                    return None
-                except EOFError:
-                    # Clear all interrupt-related lines including the current prompt
-                    for __ in range(lines_to_clear + 1):  # +1 for current prompt
-                        sys.stdout.write("\033[F")
-                        sys.stdout.write("\033[K")
-                    sys.stdout.flush()
-                    return None
-        except Exception:
-            logger.debug("Interrupt choice failed", exc_info=True)
-            return None

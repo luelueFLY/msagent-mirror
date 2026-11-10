@@ -10,17 +10,18 @@ from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import FormattedText
-from prompt_toolkit.input import DummyInput
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import ConditionalContainer, HSplit, Layout, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
-from prompt_toolkit.output import DummyOutput
 from prompt_toolkit.styles import Style, merge_styles
 from prompt_toolkit.widgets import Frame
 
-from msagent.cli.theme import theme
-from msagent.cli.ui.shared import create_prompt_style
+from msagent.cli.theme import console, theme
+from msagent.cli.ui.shared import NoConsoleScreenBufferError, create_prompt_style
+from msagent.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -275,28 +276,22 @@ class ApprovalMenu:
             ]
         )
         layout = Layout(root, focused_element=self.menu_control)
-        try:
-            return Application(
-                layout=layout,
-                key_bindings=kb,
-                style=style,
-                full_screen=False,
-                erase_when_done=True,
-            )
-        except Exception:  # pragma: no cover - Windows hosts without a console buffer
-            return Application(
-                layout=layout,
-                key_bindings=kb,
-                style=style,
-                full_screen=False,
-                erase_when_done=True,
-                input=DummyInput(),
-                output=DummyOutput(),
-            )
+        return Application(
+            layout=layout,
+            key_bindings=kb,
+            style=style,
+            full_screen=False,
+            erase_when_done=True,
+        )
 
     async def run_async(self) -> ApprovalChoice | None:
         """Display the menu and wait for a decision."""
-        return await self.create_application().run_async()
+        try:
+            return await self.create_application().run_async()
+        except NoConsoleScreenBufferError:
+            logger.exception("Unable to open the approval menu without a console screen buffer")
+            console.print_warning("Approval cancelled because the terminal has no console screen buffer.")
+            return None
 
 
 def format_approval_details(*, tool_name: str, tool_args: dict[str, Any], description: str | None) -> str:
