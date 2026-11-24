@@ -155,3 +155,12 @@ def test_file_resolver_detects_standalone_absolute_path(tmp_path: Path) -> None:
 
     assert resolver.is_standalone_reference(str(file_path)) is True
     assert resolver.is_standalone_reference("notes.txt") is False
+
+
+def test_file_resolver_rejects_root_as_standalone_reference() -> None:
+    resolver = FileResolver()
+
+    assert resolver.is_standalone_reference("/") is False
+    assert resolver.is_standalone_reference(" / ") is False
+    assert resolver.is_standalone_reference("//") is False
+    assert resolver.is_standalone_reference("///") is False

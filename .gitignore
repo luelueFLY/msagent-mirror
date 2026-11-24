@@ -81,3 +81,6 @@ AGENT.md
 /docs/zh/development_guide/skill-reviewer-false-positives.md
 /docs/zh/development_guide/skill-scanner-audit.md
 /docs/zh/development_guide/skill-scanner-false-positives.md
+
+# Harbor eval exports (tests/harbor)
+harbor-output/

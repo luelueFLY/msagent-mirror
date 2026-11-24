@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
+import sys
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from types import SimpleNamespace
@@ -63,6 +65,9 @@ class Session:
         self._sigint_handler: SignalHandler = None
         self.tool_outputs: list[ToolOutputEntry] = []
         self.latest_tool_output: ToolOutputEntry | None = None
+        # One-shot runs cannot answer approval prompts, so handlers resolve
+        # them deterministically instead of waiting for a human.
+        self.non_interactive = False
         self.execute_approval_mode: ExecuteApprovalMode | None = context.execute_approval_mode
         self.execute_approval_mode_source: str | None = "cli" if context.execute_approval_mode else None
         trace_jsonl = getattr(context, "trace_jsonl", None)
@@ -166,7 +171,17 @@ class Session:
         logger.info("Session ended")
 
     async def send(self, message: str) -> int:
-        """Send a single message in one-shot mode (non-interactive)."""
+        """Send a single message in one-shot mode."""
+        # One-shot runs only answer approval prompts when a human is attached
+        # to this terminal; otherwise (CI, Harbor containers, piped stdin)
+        # handlers resolve interrupts deterministically instead of waiting for
+        # input that will never arrive. MSAGENT_NON_INTERACTIVE forces either
+        # behavior explicitly.
+        forced = os.environ.get("MSAGENT_NON_INTERACTIVE")
+        if forced is not None:
+            self.non_interactive = forced.strip().lower() not in ("", "0", "false", "no")
+        else:
+            self.non_interactive = not (sys.stdin.isatty() and sys.stdout.isatty())
         if self.run_recorder is not None:
             self.run_recorder.start(context=self.context, stream_output=self.context.stream_output)
         try:

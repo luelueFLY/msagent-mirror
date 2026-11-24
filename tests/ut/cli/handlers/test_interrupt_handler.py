@@ -939,3 +939,111 @@ async def test_interrupt_handler_returns_none_for_unknown_payload_shape(
     result, _user_interacted = await handler._get_choice(fake_interrupt)
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_non_interactive_external_directory_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    project.mkdir()
+    (project / ".git").mkdir()
+    external.mkdir()
+    external_file = external / "outside.txt"
+    external_file.write_text("outside", encoding="utf-8")
+    session = _build_session(tmp_path)
+    session.context.working_dir = project
+    session.execute_approval_mode = "auto"
+    session.non_interactive = True
+    handler = InterruptHandler(session)
+
+    async def _unexpected_menu(_menu) -> None:
+        raise AssertionError("non-interactive runs must not open the approval menu")
+
+    monkeypatch.setattr(interrupts_module.ApprovalMenu, "run_async", _unexpected_menu)
+
+    result, interacted = await handler._get_hitl_decisions(
+        _tool_payload("read_file", {"file_path": str(external_file)})
+    )
+
+    assert result == {"decisions": [{"type": "reject", "message": "External directory access was rejected."}]}
+    assert interacted is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("auto", {"decisions": [{"type": "approve"}]}),
+        (
+            "manual",
+            {
+                "decisions": [
+                    {
+                        "type": "reject",
+                        "message": "Rejected: no interactive approval is available in non-interactive mode.",
+                    }
+                ]
+            },
+        ),
+    ],
+)
+async def test_non_interactive_hitl_decisions_use_command_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    expected: dict[str, object],
+) -> None:
+    session = _build_session(tmp_path)
+    session.execute_approval_mode = mode
+    session.non_interactive = True
+    handler = InterruptHandler(session)
+
+    async def _unexpected_menu(_menu) -> None:
+        raise AssertionError("non-interactive runs must not open the approval menu")
+
+    monkeypatch.setattr(interrupts_module.ApprovalMenu, "run_async", _unexpected_menu)
+
+    result, interacted = await handler._get_hitl_decisions(_execute_payload("python script.py"))
+
+    assert result == expected
+    assert interacted is False
+
+
+@pytest.mark.asyncio
+async def test_non_interactive_mode_prompt_defaults_to_manual(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _build_session(tmp_path)
+    session.non_interactive = True
+    handler = InterruptHandler(session)
+
+    async def _unexpected_menu(_menu) -> None:
+        raise AssertionError("non-interactive runs must not open the approval menu")
+
+    monkeypatch.setattr(interrupts_module.ApprovalMenu, "run_async", _unexpected_menu)
+
+    assert await handler._prompt_execute_approval_mode() == "manual"
+
+
+@pytest.mark.asyncio
+async def test_non_interactive_execute_mode_is_not_persisted_to_project_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One-shot runs must not write their defaulted shell mode to disk."""
+    session = _build_session(tmp_path)
+    session.non_interactive = True
+    handler = InterruptHandler(session)
+
+    async def _unexpected_menu(_menu) -> None:
+        raise AssertionError("non-interactive runs must not open the approval menu")
+
+    monkeypatch.setattr(interrupts_module.ApprovalMenu, "run_async", _unexpected_menu)
+
+    config = ToolApprovalConfig()
+    resolved = await handler._ensure_execute_approval_mode(tool_name="execute", approval_config=config)
+
+    assert resolved is True
+    assert session.execute_approval_mode == "manual"
+    assert session.execute_approval_mode_source == "non-interactive"
+    assert config.execute_approval_mode == "manual"
+    assert not (tmp_path / "config.approval.json").exists(), (
+        "non-interactive default must stay in memory, not rewrite the project config"
+    )

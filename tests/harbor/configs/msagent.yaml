@@ -1,0 +1,66 @@
+# msagent Harbor Job Configuration
+#
+# Usage:
+#   scripts/run_msagent.sh --config configs/msagent.yaml
+#   scripts/run_msagent.sh --config configs/msagent.yaml --install-only
+#   scripts/run_msagent.sh --config configs/msagent.yaml --task "0002-*"
+
+# Relative paths are resolved against this file's directory.
+dataset:
+  # Path to the dataset root (containing tasks/) or directly to tasks/ dir.
+  path: /path/to/AscendProfileAnalysisBench
+  # Glob pattern to filter tasks; null or empty runs ALL tasks.
+  task_filter: null
+
+agent:
+  # Path to the msagent wheel that gets installed into each task container.
+  # A glob is allowed; the newest match wins. Build the wheel from the branch
+  # under evaluation first (python3 build.py local).
+  wheel: ../../../dist/mindstudio_agent-*.whl
+  # Python executable inside the task container image.
+  python_bin: python3.11
+  # Harbor agent import path (module:Class).
+  import: msagent_harbor.agent:MsagentHarborAgent
+
+model:
+  # LLM provider: openai | anthropic | google
+  provider: openai
+  # Model name passed to the provider.
+  name: deepseek-v4-flash
+  # Base URL for OpenAI-compatible endpoints; null for provider default.
+  base_url: https://api.deepseek.com/v1
+
+environment:
+  # Docker image tag (prepare with scripts/prepare_base_image.sh).
+  image: ascend-profiling-eval
+  # pip mirror configuration (all optional, null = use defaults).
+  pip:
+    index_url: null
+    extra_index_url: null
+    trusted_host: null
+
+output:
+  # Final evaluation export directory. Harbor's internal working directory
+  # is cleaned up after export; only this directory persists.
+  dir: ../harbor-output
+  # Run ID; null = auto-generate as <basename>-<timestamp>.
+  run_id: null
+
+harbor:
+  # Harbor executable path. Defaults to "harbor" on PATH
+  # (e.g. after `uv tool install harbor`).
+  bin: harbor
+  # Number of attempts per task. Must stay 1: the compact export layout keys
+  # tasks by id and cannot represent multiple attempts.
+  n_attempts: 1
+  # Only build container and install wheel; skip agent run and verifier.
+  # Can be overridden with --install-only on the command line.
+  install_only: false
+  # Additional raw flags appended to `harbor run`.
+  # Run up to eight task trials concurrently, while limiting simultaneous
+  # model-backed agent phases to four to avoid API rate-limit spikes.
+  extra_args:
+    - --n-concurrent
+    - "10"
+    - --n-concurrent-agents
+    - "5"

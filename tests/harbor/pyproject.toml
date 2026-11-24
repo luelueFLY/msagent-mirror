@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "msagent-harbor"
+version = "0.1.0"
+description = "Harbor agent integration for the msagent CLI"
+requires-python = ">=3.11"
+dependencies = ["harbor"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["msagent_harbor"]

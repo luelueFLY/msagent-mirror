@@ -172,6 +172,14 @@ class InterruptHandler:
 
         writer.emit_user_response(**fields)
 
+    def _non_interactive(self) -> bool:
+        """Return whether approval prompts cannot reach a human.
+
+        One-shot CLI runs (``msagent "<message>"``) set ``session.non_interactive``;
+        interactive sessions leave it False so prompts behave as before.
+        """
+        return bool(getattr(self.session, "non_interactive", False))
+
     async def _get_choice(self, interrupt: Interrupt) -> tuple[Any, bool]:
         """Resolve an interrupt and track whether it prompted the user.
 
@@ -355,6 +363,10 @@ class InterruptHandler:
                 decision["message"] = rejection_message
             decisions.append(decision)
 
+        if self._non_interactive():
+            # Deterministic resolutions are not user interactions; do not
+            # record them as audit "user.response" events.
+            user_interacted = False
         return {"decisions": decisions}, user_interacted
 
     async def _prompt_hitl_decision(
@@ -366,7 +378,18 @@ class InterruptHandler:
         options: list[str],
         command_profile: CommandRiskLevel,
     ) -> ApprovalChoice | str | None:
-        """Prompt user for one HITL decision."""
+        """Prompt user for one HITL decision.
+
+        Non-interactive runs cannot ask, so the classified command's default
+        decision applies; anything that would have been asked is rejected.
+        """
+        if self._non_interactive():
+            default = command_profile.get("default_decision")
+            if default == "approve":
+                logger.info("Auto-approving %s in non-interactive mode", tool_name)
+                return "approve"
+            logger.info("Rejecting %s in non-interactive mode (default decision %r)", tool_name, default)
+            return ApprovalChoice("reject", "Rejected: no interactive approval is available in non-interactive mode.")
         details = format_approval_details(
             tool_name=tool_name,
             tool_args=tool_args,
@@ -417,7 +440,14 @@ class InterruptHandler:
         return labels
 
     async def _prompt_external_directory(self, *, directory: Path) -> str | None:
-        """Prompt before a tool crosses the current project boundary."""
+        """Prompt before a tool crosses the current project boundary.
+
+        In non-interactive runs there is nobody to answer, so the access is
+        rejected deterministically instead of aborting the whole session.
+        """
+        if self._non_interactive():
+            logger.info("Rejecting external directory %s in non-interactive mode", directory)
+            return "reject"
         choice = await self._prompt_approval_menu(
             title="External Directory Requires Approval",
             details="Tool access is outside the current project.",
@@ -483,6 +513,13 @@ class InterruptHandler:
         selected = await self._prompt_execute_approval_mode()
         if selected is None:
             return None
+        if self._non_interactive():
+            # One-shot runs cannot record a human's choice; keep the mode in
+            # memory only so a later interactive session still prompts for its
+            # own selection instead of inheriting this default.
+            self._set_execute_approval_mode(selected, source="non-interactive")
+            approval_config.execute_approval_mode = selected
+            return True
         self._set_execute_approval_mode(selected, source="project")
         merged = ToolApprovalConfig.update_mode_in_json_file(self._project_approval_path(), selected)
         approval_config.execute_approval_mode = merged.execute_approval_mode
@@ -490,6 +527,9 @@ class InterruptHandler:
 
     async def _prompt_execute_approval_mode(self) -> ExecuteApprovalMode | None:
         """Ask the user which shell approval mode to use for this session."""
+        if self._non_interactive():
+            logger.info("Defaulting shell approval mode to manual for non-interactive run")
+            return "manual"
         question = "\n".join(
             [
                 "First command execution: choose shell approval mode.",

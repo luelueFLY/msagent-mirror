@@ -99,6 +99,9 @@ class FileResolver(Resolver):
         candidate = text.strip().strip("'\"")
         if not candidate or not is_absolute_path_like(candidate):
             return False
+        if candidate.rstrip("/") == "":
+            # "/", "//", "///" all denote the filesystem root on POSIX.
+            return False
 
         try:
             return Path(candidate).expanduser().exists()
