@@ -84,3 +84,5 @@ AGENT.md
 
 # Harbor eval exports (tests/harbor)
 harbor-output/
+# Local experiment adapters that must never be committed (tests/harbor)
+tests/harbor/claude_code/
