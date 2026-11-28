@@ -22,6 +22,7 @@ import json
 import shlex
 import time
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from harbor.agents.installed.base import (
     BaseInstalledAgent,
@@ -216,10 +217,27 @@ class MsagentHarborAgent(BaseInstalledAgent):
             initial_prompt=prompt,
         )
         report = await _read_report(environment, self._WORKSPACE)
-        if report is None:
-            raise RuntimeError("msagent exited successfully but did not write /workspace/report.json")
+        report_source = "file"
         report_path = self.logs_dir / "report.json"
-        report_path.write_text(report, encoding="utf-8")
+        if report is None:
+            # The model sometimes delivers the report as its final chat message
+            # instead of writing /workspace/report.json. Promote that message to
+            # the report file so the verifier still scores the run; the source
+            # is recorded in the metadata so infra runs stay honest.
+            report = _final_message_from_events(events)
+            if report is None:
+                raise RuntimeError(
+                    "msagent exited successfully but wrote no /workspace/report.json "
+                    "and emitted no final assistant message"
+                )
+            report_source = "final-message-fallback"
+            report_path.write_text(report, encoding="utf-8")
+            await environment.upload_file(
+                source_path=str(report_path),
+                target_path=str(PurePosixPath(self._WORKSPACE) / "report.json"),
+            )
+        else:
+            report_path.write_text(report, encoding="utf-8")
         steps.append(
             Step(
                 step_id=len(steps) + 1,
@@ -239,6 +257,7 @@ class MsagentHarborAgent(BaseInstalledAgent):
             "trace_path": self._TRACE_FILENAME,
             "trajectory_path": "trajectory.json",
             "report_path": "report.json",
+            "report_source": report_source,
             "trace_event_count": len(events),
             "duration_sec": round(duration_sec, 3),
         }
@@ -397,7 +416,23 @@ class MsagentHarborAgent(BaseInstalledAgent):
 
 
 def _build_prompt(instruction: str) -> str:
-    return f"{instruction}\n\nWrite the final analysis to /workspace/report.json."
+    return (
+        f"{instruction}\n\n"
+        "Deliverable: write your complete final analysis to /workspace/report.json "
+        "using the write_file tool as your FINAL action, then reply with exactly "
+        "one line: done"
+    )
+
+
+def _final_message_from_events(events: list[dict[str, Any]]) -> str | None:
+    """Return the last non-empty assistant message (the agent's deliverable)."""
+    for event in reversed(events):
+        if event.get("type") != "assistant_message":
+            continue
+        content = event.get("content")
+        if isinstance(content, str) and content.strip():
+            return content
+    return None
 
 
 async def _read_report(environment: BaseEnvironment, workspace: str) -> str | None:
